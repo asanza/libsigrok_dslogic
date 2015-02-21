@@ -213,6 +213,13 @@ if HW_DEREE_DE5000
 libsigrok_la_SOURCES += \
 	src/hardware/deree-de5000/api.c
 endif
+if HW_DSLOGIC
+libsigrok_la_SOURCES += \
+	src/hardware/dslogic/api.c \
+	src/hardware/dslogic/api.h \
+	src/hardware/dslogic/protocol.c\
+	src/hardware/dslogic/protocol.h
+endif
 if HW_FLUKE_DMM
 libsigrok_la_SOURCES += \
 	src/hardware/fluke-dmm/fluke-dmm.h \
