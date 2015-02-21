@@ -18,10 +18,10 @@
  */
 
 #include <libusb.h>
-#include "command.h"
+#include "protocol.h"
 //#include "libsigrok.h"
 #include "libsigrok-internal.h"
-#include "dslogic.h"
+#include "api.h"
 
 SR_PRIV int command_get_fw_version(libusb_device_handle *devhdl,
                    struct version_info *vi)

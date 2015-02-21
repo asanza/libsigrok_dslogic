@@ -30,8 +30,8 @@
 #include <libusb.h>
 #include "libsigrok.h"
 #include "libsigrok-internal.h"
-#include "dslogic.h"
-#include "command.h"
+#include "api.h"
+#include "protocol.h"
 
 #ifndef _WIN32
 #undef min
