@@ -19,7 +19,7 @@
 
 #include <libusb.h>
 #include "protocol.h"
-//#include "libsigrok.h"
+#include "libsigrok.h"
 #include "libsigrok-internal.h"
 #include "api.h"
 
@@ -193,6 +193,7 @@ SR_PRIV int command_dso_ctrl(libusb_device_handle *devhdl, uint32_t command)
     return SR_OK;
 }
 
+/*
 SR_PRIV int command_get_status(libusb_device_handle *devhdl,
                    struct sr_status *status)
 {
@@ -210,3 +211,4 @@ SR_PRIV int command_get_status(libusb_device_handle *devhdl,
 
     return SR_OK;
 }
+*/
