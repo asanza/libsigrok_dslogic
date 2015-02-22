@@ -879,8 +879,6 @@ static int dev_close(struct sr_dev_inst *sdi) {
 }
 
 static int cleanup(void) {
-    printf("cleanup\n");
-    //TODO: Review
     int ret;
     struct drv_context *drvc;
 
