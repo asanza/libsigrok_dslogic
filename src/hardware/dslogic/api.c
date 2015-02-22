@@ -205,6 +205,7 @@ static gboolean check_conf_profile(libusb_device *dev) {
 }
 
 static int fpga_setting(const struct sr_dev_inst *sdi) {
+    printf("fpga settings\n");
     struct dev_context *devc;
     struct sr_usb_dev_inst *usb;
     struct libusb_device_handle *hdl;
@@ -338,6 +339,7 @@ static int fpga_setting(const struct sr_dev_inst *sdi) {
 //}
 
 static int fpga_config(struct libusb_device_handle *hdl, const char *filename) {
+    printf("fpga_config\n");
     FILE *fw;
     int offset, chunksize, ret, result;
     unsigned char *buf;
@@ -495,6 +497,7 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
 }
 
 static int configure_probes(const struct sr_dev_inst *sdi) {
+    printf("configure_probes\n");
     struct dev_context *devc;
     struct sr_channel *probe;
     GSList *l;
@@ -583,26 +586,29 @@ static int init(struct sr_context *sr_ctx) {
 }
 
 int set_probes(struct sr_dev_inst *sdi, int num_probes) {
+    printf("set probes\n");
     int j;
     struct sr_channel *probe;
 
     for (j = 0; j < num_probes; j++) {
-        //        if (!(probe = sr_channel_new(j, (sdi->mode == LOGIC) ? SR_CHANNEL_LOGIC : ((sdi->mode == DSO) ? SR_CHANNEL_DSO : SR_CHANNEL_ANALOG),
+        probe = sr_channel_new(j,SR_CHANNEL_LOGIC,TRUE,channel_names[j]);
+        //if (!(probe = sr_channel_new(j, (sdi->mode == LOGIC) ? SR_CHANNEL_LOGIC : ((sdi->mode == DSO) ? SR_CHANNEL_DSO : SR_CHANNEL_ANALOG),
         //                                   TRUE, probe_names[j])))
-        //            return SR_ERR;
+        if(!probe) return SR_ERR;
         /*
                 if (sdi->mode == DSO) {
                     probe->vdiv = 1000;
                     probe->coupling = FALSE;
                     probe->trig_value = 0x80;
-                }
-                sdi->channels = g_slist_append(sdi->channels, probe);
-         */
+                }*/
+        //printf("Adding Channel: %d\n",j);
+        sdi->channels = g_slist_append(sdi->channels, probe);
     }
     return SR_OK;
 }
 
 int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
+    printf("adjust_probes\n");
     /*
         int j;
         GSList *l;
@@ -699,10 +705,12 @@ GSList *scan(GSList *options) {
             continue;
 
         devcnt = g_slist_length(drvc->instances);
-        sdi = g_malloc(sizeof(struct sr_dev_inst));
+        sdi = g_malloc0(sizeof(struct sr_dev_inst));
         sdi->status = SR_ST_INITIALIZING;
         sdi->vendor = g_strdup("Dreamsourcelab");
         sdi->model = g_strdup("DSLogic");
+        // TODO: Read this strings from device???
+        sdi->version = g_strdup("1.0.0");
         sdi->driver = di;
         sdi->connection_id = g_strdup(connection_id);
 
@@ -751,10 +759,12 @@ GSList *scan(GSList *options) {
 }
 
 static GSList *dev_list(void) {
+    printf("dev_list\n");
     return ((struct drv_context *) (di->priv))->instances;
 }
 
 static GSList *dev_mode_list(void) {
+        printf("dev_mode_list\n");
     GSList *l = NULL;
     int i;
 
@@ -857,7 +867,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
 
 static int dev_close(struct sr_dev_inst *sdi) {
     struct sr_usb_dev_inst *usb;
-
+    printf("dev_close\n");
     usb = sdi->conn;
     if (usb->devhdl == NULL)
         return SR_ERR;
@@ -875,6 +885,7 @@ static int dev_close(struct sr_dev_inst *sdi) {
 }
 
 static int cleanup(void) {
+    printf("cleanup\n");
     //TODO: Review
     int ret;
     struct drv_context *drvc;
@@ -1191,7 +1202,7 @@ static int config_set(int id, GVariant *data, struct sr_dev_inst *sdi,
     /*
             sr_dev_probes_free(sdi);
      */
-    set_probes(sdi, num_probes);
+    //set_probes(sdi, num_probes);
     //        sr_dbg("%s: setting mode to %d", __func__, sdi->mode);
     /*
         } else if (id == SR_CONF_OPERATION_MODE) {
@@ -1366,7 +1377,6 @@ static int config_set(int id, GVariant *data, struct sr_dev_inst *sdi,
 
 static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
         const struct sr_channel_group *cg) {
-    printf("listing configuration\n");
     GVariant *gvar;
     GVariantBuilder gvb;
 
@@ -1405,7 +1415,6 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
         default:
             return SR_ERR_NA;
     }
-
     return SR_OK;
 }
 
@@ -2085,6 +2094,7 @@ static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {
 }
 
 static int dev_test(struct sr_dev_inst *sdi) {
+    printf("set_test\n");
     if (sdi) {
         struct sr_usb_dev_inst *usb;
         struct version_info vi;
@@ -2104,6 +2114,7 @@ static int dev_test(struct sr_dev_inst *sdi) {
 }
 
 static int dev_status_get(struct sr_dev_inst *sdi, struct sr_status *status) {
+    printf("get_status\n");
     if (sdi) {
         struct sr_usb_dev_inst *usb;
         int ret;
@@ -2123,7 +2134,7 @@ static int dev_status_get(struct sr_dev_inst *sdi, struct sr_status *status) {
 
 SR_PRIV struct sr_dev_driver dslogic_driver_info = {
     .name = "dslogic",
-    .longname = "dslogic (http://www.dreamsourcelab.com/)",
+    .longname = "http://www.dreamsourcelab.com",
     .api_version = 1,
     .init = init,
     .cleanup = cleanup,
