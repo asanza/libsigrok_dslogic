@@ -62,6 +62,16 @@ static const char *thresholds[] = {
     "5.0V Level",
 };
 
+enum{
+    VOLTAGE_THRESHOLD_3_3,
+            VOLTAGE_THRESHOLD_5_0,
+};
+
+static const int32_t supported_thresholds[] = {
+    VOLTAGE_THRESHOLD_3_3,
+            VOLTAGE_THRESHOLD_5_0
+};
+
 static const char *filters[] = {
     "None",
     "1 Sample Clock",
@@ -552,7 +562,7 @@ static struct dev_context *DSLogic_dev_new(void) {
     devc->clock_type = FALSE;
     devc->clock_edge = FALSE;
     //    devc->op_mode = SR_OP_NORMAL;
-    //    devc->th_level = SR_TH_3V3;
+    devc->th_level = VOLTAGE_THRESHOLD_3_3;
     //    devc->filter = SR_FILTER_NONE;
     //    devc->timebase = 10000;
     //    devc->trigger_slope = DSO_TRIGGER_RISING;
@@ -820,21 +830,19 @@ static int dev_open(struct sr_dev_inst *sdi) {
     if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
         sr_err("Send FPGA configure command failed!");
     } else {
-        printf("----------------------%d!\n",ret);
         /* Takes >= 10ms for the FX2 to be ready for FPGA configure. */
         g_usleep(10 * 1000);
         char filename[256];
-        printf("----------------------%d!\n",devc->th_level);       
+        printf("sending fpga firm");
         switch (devc->th_level) {
-            /*
-            case SR_TH_3V3:
+            case VOLTAGE_THRESHOLD_3_3:
                     sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
                     break;
-                case SR_TH_5V0:
+            case VOLTAGE_THRESHOLD_5_0:
                    sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
                    break;
-             */
             default:
+                sr_err("wrong voltage settings");
                 return SR_ERR;
         }
         const char *fpga_bit = filename;
@@ -844,7 +852,6 @@ static int dev_open(struct sr_dev_inst *sdi) {
         }
     }
     printf("End opening device\n");
-
     return SR_OK;
 }
 
@@ -1388,6 +1395,10 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
                         soft_trigger_matches, ARRAY_SIZE(soft_trigger_matches),
                         sizeof(int32_t));
         break;
+        case SR_CONF_VOLTAGE_THRESHOLD:
+            *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,supported_thresholds,
+                    ARRAY_SIZE(supported_thresholds),sizeof(int32_t));
+            break;
         case SR_CONF_FILTER:
             *data = g_variant_new_strv(filters, ARRAY_SIZE(filters));
             break;
