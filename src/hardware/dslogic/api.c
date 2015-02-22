@@ -57,19 +57,18 @@ static const char *opmodes[] = {
     "DRAM Loopback Test",
 };
 
-static const char *thresholds[] = {
+/*static const char *thresholds[] = {
     "1.8/2.5/3.3V Level",
     "5.0V Level",
-};
+};*/
 
-enum{
-    VOLTAGE_THRESHOLD_3_3,
-            VOLTAGE_THRESHOLD_5_0,
-};
-
-static const int32_t supported_thresholds[] = {
-    VOLTAGE_THRESHOLD_3_3,
-            VOLTAGE_THRESHOLD_5_0
+static const struct {
+    enum voltage_range range;
+    gdouble low;
+    gdouble high;
+} volt_thresholds[] = {
+    { VOLTAGE_RANGE_18_33_V, 0.7, 1.4 },
+    { VOLTAGE_RANGE_5_V,     1.4, 3.6 },
 };
 
 static const char *filters[] = {
@@ -565,7 +564,7 @@ static struct dev_context *DSLogic_dev_new(void) {
     devc->clock_type = FALSE;
     devc->clock_edge = FALSE;
     //    devc->op_mode = SR_OP_NORMAL;
-    devc->th_level = VOLTAGE_THRESHOLD_3_3;
+    devc->th_level = VOLTAGE_RANGE_18_33_V;
     //    devc->filter = SR_FILTER_NONE;
     //    devc->timebase = 10000;
     //    devc->trigger_slope = DSO_TRIGGER_RISING;
@@ -845,10 +844,10 @@ static int dev_open(struct sr_dev_inst *sdi) {
         char filename[256];
         printf("sending fpga firm");
         switch (devc->th_level) {
-            case VOLTAGE_THRESHOLD_3_3:
+            case VOLTAGE_RANGE_18_33_V:
                     sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
                     break;
-            case VOLTAGE_THRESHOLD_5_0:
+            case VOLTAGE_RANGE_5_V:
                    sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
                    break;
             default:
@@ -907,7 +906,9 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
     printf("getting configuration \n");
     struct dev_context *devc;
     struct sr_usb_dev_inst *usb;
+    GVariant *range[2];
     char str[128];
+    int i;
 
     (void) cg;
 
@@ -960,11 +961,19 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
             *data = g_variant_new_string(filters[devc->filter]);
             break;
         case SR_CONF_VOLTAGE_THRESHOLD:
-             if (!sdi)
-                        return SR_ERR;
-              devc = sdi->priv;
-             *data = g_variant_new_string(thresholds[devc->th_level]);
-                    break;
+            if (!sdi)
+                return SR_ERR;
+            devc = sdi->priv;
+            for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
+                if (devc->th_level !=
+                    volt_thresholds[i].range)
+                    continue;
+                range[0] = g_variant_new_double(volt_thresholds[i].low);
+                range[1] = g_variant_new_double(volt_thresholds[i].high);
+                *data = g_variant_new_tuple(range, 2);
+                break;
+            }
+            break;
         case SR_CONF_VDIV:
             if (!ch)
                 return SR_ERR;
@@ -1377,8 +1386,9 @@ static int config_set(int id, GVariant *data, struct sr_dev_inst *sdi,
 
 static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
         const struct sr_channel_group *cg) {
-    GVariant *gvar;
+    GVariant *gvar, *range[2];
     GVariantBuilder gvb;
+    unsigned int i;
 
     (void) sdi;
     (void) cg;
@@ -1406,8 +1416,14 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
                         sizeof(int32_t));
         break;
         case SR_CONF_VOLTAGE_THRESHOLD:
-            *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,supported_thresholds,
-                    ARRAY_SIZE(supported_thresholds),sizeof(int32_t));
+        g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
+            for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
+                range[0] = g_variant_new_double(volt_thresholds[i].low);
+                range[1] = g_variant_new_double(volt_thresholds[i].high);
+                gvar = g_variant_new_tuple(range, 2);
+                g_variant_builder_add_value(&gvb, gvar);
+            }
+            *data = g_variant_builder_end(&gvb);
             break;
         case SR_CONF_FILTER:
             *data = g_variant_new_strv(filters, ARRAY_SIZE(filters));
