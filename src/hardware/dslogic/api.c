@@ -640,6 +640,7 @@ GSList *scan(GSList *options) {
     libusb_device **devlist;
     int devcnt, num_logic_probes, ret, i, j;
     const char *conn;
+    char connection_id[64];
 
     drvc = di->priv;
 
@@ -680,6 +681,8 @@ GSList *scan(GSList *options) {
                     libusb_error_name(ret));
             continue;
         }
+        
+        usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
 
         prof = NULL;
         for (j = 0; supported_fx2[j].vid; j++) {
@@ -694,8 +697,13 @@ GSList *scan(GSList *options) {
             continue;
 
         devcnt = g_slist_length(drvc->instances);
-        sdi; // = sr_dev_inst_new(LOGIC, devcnt, SR_ST_INITIALIZING,
-        //		prof->vendor, prof->model, prof->model_version);
+        sdi = g_malloc(sizeof(struct sr_dev_inst));
+        sdi->status = SR_ST_INITIALIZING;
+        sdi->vendor = g_strdup("Dreamsourcelab");
+        sdi->model = g_strdup("DSLogic");
+        sdi->driver = di;
+        sdi->connection_id = g_strdup(connection_id);
+
         if (!sdi)
             return NULL;
         sdi->driver = di;
@@ -720,7 +728,7 @@ GSList *scan(GSList *options) {
                     libusb_get_device_address(devlist[i]), NULL);
         } else {
             char filename[256];
-            //sprintf(filename,"%s%s",config_path,prof->firmware);
+            sprintf(filename,"%s%s","/home/diego/media/DSLogic/dslogic_gui/res/",prof->firmware);
             const char *firmware = filename;
             if (ezusb_upload_firmware(devlist[i], USB_CONFIGURATION,
                     firmware) == SR_OK)
