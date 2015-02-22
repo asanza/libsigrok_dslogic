@@ -866,20 +866,15 @@ static int dev_open(struct sr_dev_inst *sdi) {
 
 static int dev_close(struct sr_dev_inst *sdi) {
     struct sr_usb_dev_inst *usb;
-    printf("dev_close\n");
     usb = sdi->conn;
     if (usb->devhdl == NULL)
         return SR_ERR;
-
-    /*
-        sr_info("DSLogic: Closing device %d on %d.%d interface %d.",
-                    sdi->index, usb->bus, usb->address, USB_INTERFACE);
+    sr_info("DSLogic: Closing device %s on %d.%d interface %d.",
+                    sdi->connection_id, usb->bus, usb->address, USB_INTERFACE);
             libusb_release_interface(usb->devhdl, USB_INTERFACE);
             libusb_close(usb->devhdl);
-     */
     usb->devhdl = NULL;
     sdi->status = SR_ST_INACTIVE;
-
     return SR_OK;
 }
 
