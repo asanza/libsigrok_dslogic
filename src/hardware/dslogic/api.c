@@ -149,6 +149,8 @@ static struct sr_dev_driver *di = &dslogic_driver_info;
 
 extern struct sr_trigger *trigger;
 
+const char* config_path = "/home/diego/media/DSLogic/dslogic_gui/res/";
+
 /**
  * Check the USB configuration to determine if this is an DSLogic device.
  *
@@ -391,6 +393,7 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
     struct version_info vi;
     int ret, skip, i, device_count;
     uint8_t revid;
+    char connection_id[64];
 
     drvc = di->priv;
     devc = sdi->priv;
@@ -419,19 +422,10 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
                 || des.idProduct != devc->profile->pid)
             continue;
 
-        if (sdi->status == SR_ST_INITIALIZING) {
-            //			if (skip != sdi->index) {
-            /* Skip devices of this type that aren't the one we want. */
-            //				skip += 1;
-            //				continue;
-            //			}
-        } else if (sdi->status == SR_ST_INACTIVE) {
-            /*
-             * This device is fully enumerated, so we need to find
-             * this device by vendor, product, bus and address.
-             */
-            if (libusb_get_bus_number(devlist[i]) != usb->bus
-                    || libusb_get_device_address(devlist[i]) != usb->address)
+        if (sdi->status == SR_ST_INITIALIZING || sdi->status == SR_ST_INACTIVE) {
+                /* check device by its physical usb bus/port address */
+                usb_get_port_path(devlist[i], connection_id, sizeof(connection_id));
+                if (strcmp(sdi->connection_id, connection_id))
                 /* This is not the one. */
                 continue;
         }
@@ -444,7 +438,7 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
                  */
                 usb->address = libusb_get_device_address(devlist[i]);
         } else {
-            sr_err("Failed to open device: %s.",
+            sr_err("pFailed to open device: %s.",
                     libusb_error_name(ret));
             break;
         }
@@ -460,7 +454,6 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
             sr_err("Failed to get REVID.");
             break;
         }
-
         /*
          * Changes in major version mean incompatible/API changes, so
          * bail out if we encounter an incompatible version.
@@ -474,21 +467,20 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
         }
 
         sdi->status = SR_ST_ACTIVE;
-        //        sr_info("Opened device %d on %d.%d, "
-        //			"interface %d, firmware %d.%d.",
-        //			sdi->index, usb->bus, usb->address,
-        //			USB_INTERFACE, vi.major, vi.minor);
+        sr_info("Opened device %a on %d.%d, "
+        			"interface %d, firmware %d.%d.",
+        			sdi->connection_id, usb->bus, usb->address,
+        			USB_INTERFACE, vi.major, vi.minor);
 
         sr_info("Detected REVID=%d, it's a Cypress CY7C68013%s.",
                 revid, (revid != 1) ? " (FX2)" : "A (FX2LP)");
 
         break;
     }
+        
     libusb_free_device_list(devlist, 1);
-
     if (sdi->status != SR_ST_ACTIVE)
         return SR_ERR;
-
     return SR_OK;
 }
 
@@ -728,7 +720,7 @@ GSList *scan(GSList *options) {
                     libusb_get_device_address(devlist[i]), NULL);
         } else {
             char filename[256];
-            sprintf(filename,"%s%s","/home/diego/media/DSLogic/dslogic_gui/res/",prof->firmware);
+            sprintf(filename,"%s%s",config_path,prof->firmware);
             const char *firmware = filename;
             if (ezusb_upload_firmware(devlist[i], USB_CONFIGURATION,
                     firmware) == SR_OK)
@@ -801,12 +793,11 @@ static int dev_open(struct sr_dev_inst *sdi) {
         sr_info("Firmware upload was not needed.");
         ret = DSLogic_dev_open(sdi);
     }
-
     if (ret != SR_OK) {
+        printf("unable to open !\n");
         sr_err("Unable to open device.");
         return SR_ERR;
     }
-
     ret = libusb_claim_interface(usb->devhdl, USB_INTERFACE);
     if (ret != 0) {
         switch (ret) {
@@ -822,23 +813,27 @@ static int dev_open(struct sr_dev_inst *sdi) {
                         libusb_error_name(ret));
                 break;
         }
-
+        printf("claiming iface !\n");
         return SR_ERR;
     }
 
     if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
         sr_err("Send FPGA configure command failed!");
     } else {
+        printf("----------------------%d!\n",ret);
         /* Takes >= 10ms for the FX2 to be ready for FPGA configure. */
         g_usleep(10 * 1000);
         char filename[256];
+        printf("----------------------%d!\n",devc->th_level);       
         switch (devc->th_level) {
-                //case SR_TH_3V3:
-                //    sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
-                //    break;
-                //case SR_TH_5V0:
-                //   sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
-                //   break;
+            /*
+            case SR_TH_3V3:
+                    sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
+                    break;
+                case SR_TH_5V0:
+                   sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
+                   break;
+             */
             default:
                 return SR_ERR;
         }
@@ -848,6 +843,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
             sr_err("Configure FPGA failed!");
         }
     }
+    printf("End opening device\n");
 
     return SR_OK;
 }
@@ -945,14 +941,12 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
             devc = sdi->priv;
             *data = g_variant_new_string(filters[devc->filter]);
             break;
-            /*
-                case SR_CONF_THRESHOLD:
-                    if (!sdi)
+        case SR_CONF_VOLTAGE_THRESHOLD:
+             if (!sdi)
                         return SR_ERR;
-                    devc = sdi->priv;
+              devc = sdi->priv;
              *data = g_variant_new_string(thresholds[devc->th_level]);
                     break;
-             */
         case SR_CONF_VDIV:
             if (!ch)
                 return SR_ERR;
