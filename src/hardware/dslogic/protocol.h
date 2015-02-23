@@ -119,6 +119,7 @@ struct dev_context {
 	/* Device/capture settings */
 	uint64_t cur_samplerate;
 	uint64_t limit_samples;
+        struct sr_context* ctx;
 
 	/* Operational settings */
 	gboolean sample_wide;

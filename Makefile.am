@@ -20,7 +20,7 @@
 
 ACLOCAL_AMFLAGS = -I autostuff
 
-AM_CPPFLAGS = -I$(srcdir)/src -DFIRMWARE_DIR='"$(FIRMWARE_DIR)"'
+AM_CPPFLAGS = -g -O0 -I$(srcdir)/src -DFIRMWARE_DIR='"$(FIRMWARE_DIR)"'
 
 lib_LTLIBRARIES = libsigrok.la
 

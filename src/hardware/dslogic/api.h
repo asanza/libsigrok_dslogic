@@ -79,6 +79,12 @@ struct cmd_control {
     uint8_t byte3;
 };
 
+struct ds_trigger_pos {
+    uint32_t real_pos;
+    uint32_t ram_saddr;
+    unsigned char first_block[504];
+};
+
 #pragma pack(pop)
 
 SR_PRIV int command_get_fw_version(libusb_device_handle *devhdl,
