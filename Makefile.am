@@ -216,7 +216,6 @@ endif
 if HW_DSLOGIC
 libsigrok_la_SOURCES += \
 	src/hardware/dslogic/api.c \
-	src/hardware/dslogic/api.h \
 	src/hardware/dslogic/protocol.c\
 	src/hardware/dslogic/protocol.h
 endif
@@ -395,7 +394,9 @@ libsigrok_la_SOURCES += \
 	src/hardware/zeroplus-logic-cube/gl_usb.c \
 	src/hardware/zeroplus-logic-cube/protocol.h \
 	src/hardware/zeroplus-logic-cube/protocol.c \
-	src/hardware/zeroplus-logic-cube/api.c
+	src/hardware/zeroplus-logic-cube/api.c \
+	src/hardware/dslogic/dslogic.h \
+	src/hardware/dslogic/dslogic.c
 endif
 
 libsigrok_la_LIBADD = $(LIBOBJS)

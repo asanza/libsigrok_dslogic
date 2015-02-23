@@ -25,12 +25,12 @@
 #include <math.h>
 #include <errno.h>
 #include <assert.h>
-
-#include <inttypes.h>
+#include <glib/gstdio.h>
 #include <libusb.h>
+#include <inttypes.h>
 #include "libsigrok.h"
 #include "libsigrok-internal.h"
-#include "api.h"
+#include "dslogic.h"
 #include "protocol.h"
 
 #ifndef _WIN32
@@ -38,26 +38,8 @@
 #define min(a,b) ((a)<(b)?(a):(b))
 #endif
 
-#define SR_KB(n) ((n) * (uint64_t)(1024ULL))
-#define SR_MB(n) ((n) * (uint64_t)(1048576ULL))
-
 static const int cons_buffer_size = 1024 * 16;
-static int dso_buffer_size = SR_KB(32);
-
 static struct dev_context *DSLogic_dev_new(void);
-
-/*static struct sr_dev_mode mode_list[] = {
-    {"LA", LOGIC},
-    {"DAQ", ANALOG},
-    {"OSC", DSO},
-};*/
-
-static const char *opmodes[] = {
-    "Normal",
-    "Internal Test",
-    "External Test",
-    "DRAM Loopback Test",
-};
 
 static const struct {
     enum voltage_range range;
@@ -318,7 +300,7 @@ static int fpga_setting(const struct sr_dev_inst *sdi) {
 
     result = SR_OK;
     ret = libusb_bulk_transfer(hdl, 2 | LIBUSB_ENDPOINT_OUT,
-            &setting, sizeof (struct DSLogic_setting),
+            (unsigned char*)&setting, sizeof (struct DSLogic_setting),
             &transferred, 1000);
 
     if (ret < 0) {
@@ -399,7 +381,8 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
     struct dev_context *devc;
     struct drv_context *drvc;
     struct version_info vi;
-    int ret, skip, i, device_count;
+	//int skip;
+    int ret, i, device_count;
     uint8_t revid;
     char connection_id[64];
 
@@ -411,7 +394,7 @@ static int DSLogic_dev_open(struct sr_dev_inst *sdi) {
         /* Device is already in use. */
         return SR_ERR;
 
-    skip = 0;
+    //skip = 0;
     device_count = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
     if (device_count < 0) {
         sr_err("Failed to get device list: %s.",
@@ -497,8 +480,10 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
     struct dev_context *devc;
     struct sr_channel *probe;
     GSList *l;
-    int probe_bit, stage, i;
-    char *tc;
+    //int probe_bit;
+	int  i;
+	//int stage;
+    //char *tc;
 
     devc = sdi->priv;
     for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
@@ -506,7 +491,7 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
         devc->trigger_value[i] = 0;
     }
 
-    stage = -1;
+    //stage = -1;
     for (l = sdi->channels; l; l = l->next) {
         probe = (struct sr_channel *) l->data;
         if (probe->enabled == FALSE)
@@ -518,11 +503,11 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
         else
             devc->sample_wide = FALSE;
 
-        probe_bit = 1 << (probe->index);
+        //probe_bit = 1 << (probe->index);
         //if (!(probe->trigger))
         //			continue;
 
-        stage = 0;
+        //stage = 0;
         //		for (tc = probe->trigger; *tc; tc++) {
         //			devc->trigger_mask[stage] |= probe_bit;
         //			if (*tc == '1')
@@ -554,7 +539,7 @@ static int init(struct sr_context *sr_ctx) {
     return std_init(sr_ctx, di, LOG_PREFIX);
 }
 
-int set_probes(struct sr_dev_inst *sdi, int num_probes) {
+static int set_probes(struct sr_dev_inst *sdi, int num_probes) {
     int j;
     struct sr_channel *probe;
 
@@ -575,7 +560,7 @@ int set_probes(struct sr_dev_inst *sdi, int num_probes) {
     return SR_OK;
 }
 
-int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
+static int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
 	printf("adjust_probes\n");
 	int j;
 	GSList *l;
@@ -586,22 +571,23 @@ int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
 
 	j = g_slist_length(sdi->channels);
 	while(j < num_probes) {
-		if (!(probe = sr_channel_new(j, (sdi->mode == LOGIC) ? SR_CHANNEL_LOGIC : ((sdi->mode == DSO) ? SR_CHANNEL_DSO : SR_CHANNEL_ANALOG),
-		                             TRUE, probe_names[j])))
+		//if (!(probe = sr_channel_new(j, (sdi->mode == LOGIC) ? SR_CHANNEL_LOGIC : ((sdi->mode == DSO) ? SR_CHANNEL_DSO : SR_CHANNEL_ANALOG),
+		 //                            TRUE, probe_names[j])))
+		probe = sr_channel_new (j,SR_CHANNEL_LOGIC,TRUE, channel_names[j]);
 			return SR_ERR;
 		sdi->channels = g_slist_append(sdi->channels, probe);
 		j++;
 	}
 
 	while(j > num_probes) {
-		g_slist_delete_link(sdi->channels, g_slist_last(sdi->channels));
+		p = g_slist_delete_link(sdi->channels, g_slist_last(sdi->channels));
 		j--;
 	}
 
 	return SR_OK;
 }
 
-GSList *scan(GSList *options) {
+static GSList *scan(GSList *options) {
     struct drv_context *drvc;
     struct dev_context *devc;
     struct sr_dev_inst *sdi;
@@ -729,7 +715,7 @@ static GSList *dev_list(void) {
 
 static GSList *dev_mode_list(void) {
     GSList *l = NULL;
-    int i;
+//    int i;
 
     // for(i = 0; i < ARRAY_SIZE(mode_list); i++) {
     //    l = g_slist_append(l, &mode_list[i]);
@@ -863,7 +849,7 @@ static int config_get(int id, GVariant **data, const struct sr_dev_inst *sdi,
     struct sr_usb_dev_inst *usb;
     GVariant * range[2];
     char str[128];
-    int i;
+    unsigned int i;
 
     (void) cg;
 
@@ -1196,7 +1182,7 @@ static int config_set(int id, GVariant *data, struct sr_dev_inst *sdi,
             if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
                 sr_err("Send FPGA configure command failed!");
             } else {
-               // /* Takes >= 10ms for the FX2 to be ready for FPGA configure.
+               //  Takes >= 10ms for the FX2 to be ready for FPGA configure.
                 g_usleep(10 * 1000);
                 char filename[256];
                 switch(devc->th_level) {
@@ -1387,30 +1373,6 @@ static int config_list(int key, GVariant **data, const struct sr_dev_inst *sdi,
             return SR_ERR_NA;
     }
     return SR_OK;
-}
-
-static void abort_acquisition(struct dev_context *devc) {
-    int i, ret;
-    struct sr_usb_dev_inst *usb;
-
-    devc->num_samples = -1;
-
-    sr_info("%s: Stopping", __func__);
-
-    /* Stop GPIF acquisition */
-    usb = ((struct sr_dev_inst *) devc->cb_data)->conn;
-    /*
-        if ((ret = command_stop_acquisition (usb->devhdl)) != SR_OK)
-            sr_err("Stop DSLogic acquisition failed!");
-        else
-            sr_info("Stop DSLogic acquisition!");
-     */
-
-    /* Cancel exist transfers */
-    for (i = devc->num_transfers - 1; i >= 0; i--) {
-        if (devc->transfers[i])
-            libusb_cancel_transfer(devc->transfers[i]);
-    }
 }
 
 static void finish_acquisition(struct dev_context *devc) {
@@ -1752,10 +1714,10 @@ static unsigned int get_number_of_transfers(struct dev_context *devc) {
 
 static unsigned int get_timeout(struct dev_context *devc) {
     size_t total_size;
-    unsigned int timeout;
+    //unsigned int timeout;
 
     total_size = get_buffer_size(devc) * get_number_of_transfers(devc);
-    timeout = total_size / to_bytes_per_ms(devc);
+    //timeout = total_size / to_bytes_per_ms(devc);
     //return timeout + timeout / 4; /* Leave a headroom of 25% percent. */
     return 1000;
 }
@@ -1902,30 +1864,20 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
     struct drv_context *drvc;
     struct sr_usb_dev_inst *usb;
     struct libusb_transfer *transfer;
-    /*
-        struct ds_trigger_pos *trigger_pos;
-     */
-    const struct libusb_pollfd **lupfd;
+    struct ds_trigger_pos *trigger_pos;
     int ret;
-    int header_transferred;
-    unsigned int i;
-
     test_init = 1;
-
     if (sdi->status != SR_ST_ACTIVE)
         return SR_ERR_DEV_CLOSED;
-
     drvc = di->priv;
     devc = sdi->priv;
     usb = sdi->conn;
-
     devc->cb_data = cb_data;
     devc->num_samples = 0;
     devc->empty_transfer_count = 0;
     devc->status = DSLOGIC_INIT;
     devc->num_transfers = 0;
     devc->submitted_transfers = 0;
-
     /* Configures devc->trigger_* and devc->sample_wide */
     if (configure_probes(sdi) != SR_OK) {
         sr_err("Failed to configure probes.");
@@ -1952,42 +1904,6 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
             return ret;
         }
     }
-    /*
-        if (sdi->mode == DSO) {
-            GSList *l;
-            for(l = sdi->channels; l; l = l->next) {
-                struct sr_channel *probe = (struct sr_channel *)l->data;
-                ret = command_dso_ctrl(usb->devhdl, dso_cmd_gen(sdi, probe, SR_CONF_VDIV));
-                if (ret != SR_OK) {
-                    sr_err("Set VDIV of channel %d command failed!", probe->index);
-                    return ret;
-                }
-            }
-     */
-    ret = command_dso_ctrl(usb->devhdl, dso_cmd_gen(sdi, NULL, SR_CONF_HORIZ_TRIGGERPOS));
-    if (ret != SR_OK) {
-        sr_err("Set Horiz Trigger Position command failed!");
-        return ret;
-    }
-    ret = command_dso_ctrl(usb->devhdl, dso_cmd_gen(sdi, NULL, SR_CONF_TRIGGER_SLOPE));
-    if (ret != SR_OK) {
-        sr_err("Set Trigger Slope command failed!");
-        return ret;
-    }
-    ret = command_dso_ctrl(usb->devhdl, dso_cmd_gen(sdi, NULL, SR_CONF_TRIGGER_SOURCE));
-    if (ret != SR_OK) {
-        sr_err("Set Trigger Source command failed!");
-        return ret;
-    }
-    /*
-            ret = command_dso_ctrl(usb->devhdl, dso_cmd_gen(sdi, NULL, SR_CONF_TRIGGER_VALUE));
-            if (ret != SR_OK) {
-                sr_err("Set Trigger Value command failed!");
-                return ret;
-            }
-     */
-    //}
-
 
     if ((ret = command_start_acquisition(usb->devhdl,
             devc->cur_samplerate, devc->sample_wide, (1/*sdi->mode == LOGIC*/))) != SR_OK) {
@@ -1998,7 +1914,6 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
     test_sample_value = 0;
     devc->ctx = drvc->sr_ctx;
     usb_source_add(sdi->session, devc->ctx, get_timeout(devc), receive_data, (void*) sdi);
-    struct ds_trigger_pos* trigger_pos;
     //poll trigger status transfer
     if (!(trigger_pos = g_try_malloc0(sizeof (struct ds_trigger_pos)))) {
         sr_err("USB trigger_pos buffer malloc failed.");
@@ -2067,7 +1982,7 @@ static int dev_test(struct sr_dev_inst *sdi) {
     }
 }
 
-static int dev_status_get(struct sr_dev_inst *sdi, struct sr_status *status) {
+static int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status) {
     printf("get_status\n");
     if (sdi) {
         struct sr_usb_dev_inst *usb;
@@ -2096,7 +2011,7 @@ SR_PRIV struct sr_dev_driver dslogic_driver_info = {
     .dev_list = dev_list,
     .dev_clear = NULL,
     .config_commit = NULL,
-    .config_channel_set = NULL,
+    .config_channel_set = set_probes,
     .dev_clear = dev_clear,
     .config_get = config_get,
     .config_set = config_set,
@@ -2135,4 +2050,26 @@ static struct dev_context *DSLogic_dev_new(void) {
     //    devc->zero = FALSE;
 
     return devc;
+}
+
+SR_PRIV void abort_acquisition(struct dev_context *devc) {
+	int i, ret;
+	struct sr_usb_dev_inst *usb;
+
+	devc->num_samples = -1;
+
+	sr_info("%s: Stopping", __func__);
+
+	/* Stop GPIF acquisition */
+	usb = ((struct sr_dev_inst *) devc->cb_data)->conn;
+	if ((ret = command_stop_acquisition (usb->devhdl)) != SR_OK)
+		sr_err("Stop DSLogic acquisition failed!");
+	else
+		sr_info("Stop DSLogic acquisition!");
+
+	/* Cancel exist transfers */
+	for (i = devc->num_transfers - 1; i >= 0; i--) {
+		if (devc->transfers[i])
+			libusb_cancel_transfer(devc->transfers[i]);
+	}
 }
