@@ -19,11 +19,13 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef LIBDSLOGIC_HARDWARE_API_H
-#define LIBDSLOGIC_HARDWARE_API_H
+#ifndef LIBDSLOGIC_HARDWARE_DSLOGIC_H
+#define LIBDSLOGIC_HARDWARE_DSLOGIC_H
 
 #include <glib.h>
 #include <libsigrok.h>
+#include "devdefs.h"
+#include "protocol.h"
 
 /* Message logging helpers with subsystem-specific prefix string. */
 #define LOG_PREFIX "DSLogic Hardware: "
@@ -36,12 +38,9 @@
 
 #define USB_INTERFACE		0
 #define USB_CONFIGURATION	1
-#define NUM_TRIGGER_STAGES	16
 #define TRIGGER_TYPE 		"01"
 
 #define MAX_RENUM_DELAY_MS	3000
-#define NUM_SIMUL_TRANSFERS	64
-#define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
 
 #define DSLOGIC_REQUIRED_VERSION_MAJOR	1
 
@@ -50,9 +49,6 @@
 
 /* 6 delay states of up to 256 clock ticks */
 #define MAX_SAMPLE_DELAY	(6 * 256)
-
-/* Software trigger implementation: positive values indicate trigger stage. */
-#define TRIGGER_FIRED          -1
 
 #define DEV_CAPS_16BIT_POS	0
 
@@ -73,21 +69,6 @@ enum voltage_range {
 	VOLTAGE_RANGE_5_V,	/* 5V logic */
 };
 
-struct DSLogic_profile {
-	uint16_t vid;
-	uint16_t pid;
-
-	const char *vendor;
-	const char *model;
-	const char *model_version;
-
-	const char *firmware;
-
-	const char *fpga_bit33;
-	const char *fpga_bit50;
-
-	uint32_t dev_caps;
-};
 
 static const struct DSLogic_profile supported_fx2[3] = {
 	/*
@@ -100,63 +81,6 @@ static const struct DSLogic_profile supported_fx2[3] = {
 		DEV_CAPS_16BIT},
 
 	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-};
-
-enum {
-	DSLOGIC_ERROR = -1,
-	DSLOGIC_INIT = 0,
-	DSLOGIC_START = 1,
-	DSLOGIC_TRIGGERED = 2,
-	DSLOGIC_DATA = 3,
-	DSLOGIC_STOP = 4,
-};
-
-struct dev_context {
-	const struct DSLogic_profile *profile;
-	/*
-	 * Since we can't keep track of an DSLogic device after upgrading
-	 * the firmware (it renumerates into a different device address
-	                 * after the upgrade) this is like a global lock. No device will open
-		 * until a proper delay after the last device was upgraded.
-		 */
-	int64_t fw_updated;
-
-	/* libsigrok context */
-	struct sr_context* ctx;
-	/* Device/capture settings */
-	uint64_t cur_samplerate;
-	uint64_t limit_samples;
-
-	/* Operational settings */
-	gboolean sample_wide;
-	gboolean clock_type;
-	gboolean clock_edge;
-	uint16_t op_mode;
-	uint16_t th_level;
-	uint16_t filter;
-	uint16_t trigger_mask[NUM_TRIGGER_STAGES];
-	uint16_t trigger_value[NUM_TRIGGER_STAGES];
-	int trigger_stage;
-	uint16_t trigger_buffer[NUM_TRIGGER_STAGES];
-	uint64_t timebase;
-	uint8_t trigger_slope;
-	uint8_t trigger_source;
-	uint32_t trigger_hpos;
-	gboolean zero;
-
-	int num_samples;
-	int submitted_transfers;
-	int empty_transfer_count;
-
-	void *cb_data;
-	unsigned int num_transfers;
-	struct libusb_transfer **transfers;
-	int *usbfd;
-
-	int pipe_fds[2];
-	GIOChannel *channel;
-
-	int status;
 };
 
 struct DSLogic_setting {
@@ -217,5 +141,18 @@ struct DSLogic_setting {
 	//uint16_t trig_logic3[NUM_TRIGGER_STAGES];
 	uint32_t end_sync;
 };
+
+SR_PRIV void abort_acquisition(struct dev_context *devc);
+SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi);
+SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename);
+SR_PRIV gboolean check_conf_profile(libusb_device *dev);
+SR_PRIV int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status);
+SR_PRIV int dev_test(struct sr_dev_inst *sdi);
+SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer);
+SR_PRIV unsigned int get_timeout(struct dev_context *devc);
+SR_PRIV unsigned int get_number_of_transfers(struct dev_context *devc);
+SR_PRIV unsigned int to_bytes_per_ms(struct dev_context *devc);
+SR_PRIV size_t get_buffer_size(struct dev_context *devc);
+SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi);
 
 #endif

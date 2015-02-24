@@ -396,7 +396,10 @@ libsigrok_la_SOURCES += \
 	src/hardware/zeroplus-logic-cube/protocol.c \
 	src/hardware/zeroplus-logic-cube/api.c \
 	src/hardware/dslogic/dslogic.h \
-	src/hardware/dslogic/dslogic.c
+	src/hardware/dslogic/dslogic.c \
+	src/hardware/dslogic/transfer.h \
+	src/hardware/dslogic/transfer.c \
+	src/hardware/dslogic/devdefs.h
 endif
 
 libsigrok_la_LIBADD = $(LIBOBJS)

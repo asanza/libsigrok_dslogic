@@ -21,6 +21,7 @@
 #define LIBDSLOGIC_HARDWARE_PROTOCOL_H
 
 #include <glib.h>
+#include <libusb.h>
 #include "libsigrok.h"
 
 /* Protocol commands */
@@ -46,8 +47,6 @@
 #define CMD_START_FLAGS_CLK_48MHZ	(1 << CMD_START_FLAGS_CLK_SRC_POS)
 
 #define CMD_START_FLAGS_STOP        (1 << CMD_START_FLAGS_STOP_POS)
-
-#define LOG_PREFIX "DSLogic Hardware: "
 
 #pragma pack(push, 1)
 
@@ -104,8 +103,7 @@ SR_PRIV int command_get_revid_version(libusb_device_handle *devhdl,
 				      uint8_t *revid);
 SR_PRIV int command_start_acquisition(libusb_device_handle *devhdl,
                       uint64_t samplerate, gboolean samplewide, gboolean la_mode);
-SR_PRIV int command_stop_acquistition(libusb_device_handle *devhdl);
-
+SR_PRIV int command_stop_acquisition(libusb_device_handle *devhdl);
 SR_PRIV int command_fpga_config(libusb_device_handle *devhdl);
 SR_PRIV int command_fpga_setting(libusb_device_handle *devhdl, uint32_t setting_count);
 
