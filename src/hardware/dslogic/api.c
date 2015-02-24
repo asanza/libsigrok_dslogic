@@ -950,15 +950,11 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {
 	(void) cb_data;
-
 	struct dev_context *devc;
-
 	devc = sdi->priv;
 	devc->status = DSLOGIC_STOP;
-
 	sr_info("%s: Stopping", __func__);
-	//abort_acquisition(sdi->priv);
-
+	abort_acquisition(sdi->priv);
 	return SR_OK;
 }
 
