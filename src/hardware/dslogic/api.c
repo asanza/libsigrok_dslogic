@@ -134,7 +134,7 @@ static const uint64_t samplecounts[] = {
 SR_PRIV struct sr_dev_driver dslogic_driver_info;
 static struct sr_dev_driver *di = &dslogic_driver_info;
 
-const char* config_path = "/home/diego/media/DSLogic/dslogic_gui/res/";
+const char* config_path = "/home/diego/media/DSLogic/dslogic-gui/res/";
 
 static int receive_data(int fd, int revents, void *cb_data) {
 	//static int i = 0;
