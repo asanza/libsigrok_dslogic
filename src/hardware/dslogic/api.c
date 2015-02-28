@@ -62,19 +62,40 @@ static const uint32_t drvopts[] = {
 
 /* device options */
 static const uint32_t devopts[] = {
-	SR_CONF_CONTINUOUS,
-	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET | SR_CONF_GET,
+	SR_CONF_CONTINUOUS ,
+	SR_CONF_LIMIT_SAMPLES | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
 	SR_CONF_CONN | SR_CONF_GET,
 	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
 	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
-	SR_CONF_EXTERNAL_CLOCK,
-	SR_CONF_CLOCK_EDGE,
-	SR_CONF_FILTER,
-	SR_CONF_DEVICE_MODE,
-	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET,
+	SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
+	SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+/*	SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+	SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_TEST_MODE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,*/
 };
+
+/* Helper for mapping a string-typed configuration value to an index
+ * within a table of possible values.
+ */
+static int lookup_index(GVariant *value, const char *const *table, int len)
+{
+	const char *entry;
+	int i;
+
+	entry = g_variant_get_string(value, NULL);
+	if (!entry)
+		return -1;
+
+	// Linear search is fine for very small tables. 
+	for (i = 0; i < len; ++i) {
+		if (strcmp(entry, table[i]) == 0)
+			return i;
+	}
+	return -1;
+}
 
 static const int32_t soft_trigger_matches[] = {
 	SR_TRIGGER_ZERO,
@@ -84,6 +105,10 @@ static const int32_t soft_trigger_matches[] = {
 	SR_TRIGGER_EDGE,
 };
 
+/* Names assigned to available trigger slope choices.  Indices must
+ * match the signal_edge enum values.
+ */
+static const char *const signal_edge_names[] = { "r", "f" };
 
 static const char *channel_names[] = {
 	"0", "1", "2", "3", "4", "5", "6", "7",
@@ -652,17 +677,19 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			devc = sdi->priv;
 			*data = g_variant_new_uint64(devc->cur_samplerate);
 			break;
-		//case SR_CONF_CLOCK_TYPE:
-			//    if (!sdi)
-			//        return SR_ERR;
-			//    devc = sdi->priv;
-			//    *data = g_variant_new_boolean(devc->clock_type);
-			//    break;
-		case SR_CONF_CLOCK_EDGE:
-			if (!sdi)
-				return SR_ERR;
+		case SR_CONF_EXTERNAL_CLOCK:
+			if(!sdi) return SR_ERR;
 			devc = sdi->priv;
-			*data = g_variant_new_boolean(devc->clock_edge);
+			*data = g_variant_new_boolean(devc->clock_source
+						== CLOCK_EXT_CLK);
+			break;
+		case SR_CONF_CLOCK_EDGE:
+			if(!sdi) return SR_ERR;
+			devc = sdi->priv;
+			int idx = devc->clock_edge;
+			if (idx >= G_N_ELEMENTS(signal_edge_names))
+				return SR_ERR_BUG;
+			*data = g_variant_new_string(signal_edge_names[idx]);
 			break;
 		//case SR_CONF_OPERATION_MODE:
 			//    if (!sdi)
@@ -721,6 +748,13 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			devc = sdi->priv;
 			*data = g_variant_new_uint16(devc->trigger_hpos);
 			break;
+		case SR_CONF_CAPTURE_RATIO:
+			if (sdi) {
+				devc = sdi->priv;
+				*data = g_variant_new_uint64(devc->capture_ratio);
+			} else
+				return SR_ERR_ARG;
+			return SR_OK;
 			/*
 		 case SR_CONF_ZERO:
 			 if (!sdi)
@@ -750,7 +784,22 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
 
 	devc = sdi->priv;
 	usb = sdi->conn;
-	if (id == SR_CONF_SAMPLERATE) {
+	if(id==SR_CONF_CLOCK_EDGE){
+		int idx = lookup_index(data, signal_edge_names,
+				   G_N_ELEMENTS(signal_edge_names));
+		if (idx < 0)
+			return SR_ERR_ARG;
+		devc->clock_edge = idx;
+		ret = SR_OK;
+	}else if(id==SR_CONF_EXTERNAL_CLOCK){
+		devc->clock_source = (g_variant_get_boolean(data))
+			? CLOCK_EXT_CLK : CLOCK_INTERNAL;
+		ret = SR_OK;
+	}else if(id==SR_CONF_CAPTURE_RATIO){
+		// TODO: Bind this with capture ratio
+		devc->capture_ratio = g_variant_get_uint64 (data);
+		ret = SR_OK;
+	}else if (id == SR_CONF_SAMPLERATE) {
 		devc->cur_samplerate = g_variant_get_uint64(data);
 		// if (sdi->mode == LOGIC) {
 		if (devc->cur_samplerate >= SR_MHZ(200)) {
@@ -853,6 +902,11 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 		case SR_CONF_FILTER:
 			*data = g_variant_new_strv(filters, ARRAY_SIZE(filters));
 			break;
+		//case SR_CONF_TRIGGER_SLOPE:
+		case SR_CONF_CLOCK_EDGE:
+			*data = g_variant_new_strv(signal_edge_names,
+					   G_N_ELEMENTS(signal_edge_names));
+		break;
 		default:
 			return SR_ERR_NA;
 	}
@@ -994,8 +1048,9 @@ static struct dev_context *DSLogic_dev_new(void) {
 	devc->cur_samplerate = DEFAULT_SAMPLERATE;
 	devc->limit_samples = DEFAULT_SAMPLELIMIT;
 	devc->sample_wide = 0;
-	devc->clock_type = FALSE;
-	devc->clock_edge = FALSE;
+	devc->clock_source = CLOCK_INTERNAL;
+	devc->clock_edge = 0;
+	devc->capture_ratio = 0;
 	//    devc->op_mode = SR_OP_NORMAL;
 	devc->th_level = VOLTAGE_RANGE_18_33_V;
 	// devc->filter = SR_FILTER_NONE;

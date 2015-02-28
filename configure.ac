@@ -32,7 +32,7 @@ AC_INIT([libsigrok], [sr_package_version], [sigrok-devel@lists.sourceforge.net],
 AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([autostuff])
 AC_CONFIG_AUX_DIR([autostuff])
-
+AM_MAINTAINER_MODE([enable]) 
 # We require this to know the target settings if we're cross-compiling.
 AC_CANONICAL_SYSTEM
 

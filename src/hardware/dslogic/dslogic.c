@@ -104,7 +104,7 @@ SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi) {
     setting.mode += 0<<13; //((devc->op_mode == SR_OP_LOOPBACK_TEST) << 13);
     setting.mode += 0; //trigger->trigger_en;
     setting.mode += 0<<4; //((sdi->mode > 0) << 4); 0=logic, 1= dso; 2 = analog
-    setting.mode += (devc->clock_type << 1);
+    setting.mode += ((devc->clock_source == CLOCK_EXT_CLK) << 1);
     setting.mode += (devc->clock_edge << 1);
     setting.mode += (((devc->cur_samplerate == SR_MHZ(200) && 1/*sdi->mode != DSO*/) || (0/*sdi->mode == ANALOG*/)) << 5);
     setting.mode += ((devc->cur_samplerate == SR_MHZ(400)) << 6);

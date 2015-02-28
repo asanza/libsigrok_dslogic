@@ -50,8 +50,9 @@ struct dev_context {
 
 	/* Operational settings */
 	gboolean sample_wide;
-	gboolean clock_type;
-	gboolean clock_edge;
+	//TODO: Replace clock type 
+	uint32_t clock_source;
+	uint32_t clock_edge;
 	uint16_t op_mode;
 	uint16_t th_level;
 	uint16_t filter;
@@ -62,7 +63,11 @@ struct dev_context {
 	uint64_t timebase;
 	uint8_t trigger_slope;
 	uint8_t trigger_source;
+
+	//TODO: replace trigger_hpos with capture ratio
 	uint32_t trigger_hpos;
+	uint32_t capture_ratio;
+	
 	gboolean zero;
 
 	int num_samples;
@@ -80,6 +85,11 @@ struct dev_context {
 	int status;
 };
 
-
+/** Available clock sources.
+ */
+enum clock_source {
+	CLOCK_INTERNAL,
+	CLOCK_EXT_CLK,
+};
 
 #endif
