@@ -72,7 +72,7 @@ struct dev_context {
     uint8_t trigger_source;
 };
 
-SR_PRIV void abort_acquisition(struct dev_context *devc) {
+static void abort_acquisition(struct dev_context *devc) {
 	int i, ret;
 	struct sr_usb_dev_inst *usb;
 
@@ -804,7 +804,7 @@ SR_PRIV int dev_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value){
     return SR_OK;
 }
 
-SR_PRIV int dev_get_sample_rate(const struct sr_dev_inst* sdi){
+SR_PRIV uint64_t dev_get_sample_rate(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     return devc->current_samplerate;
@@ -817,4 +817,13 @@ SR_PRIV int dev_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplera
         return SR_ERR_ARG;
     devc->current_samplerate = samplerate;
     return SR_OK;
+}
+
+SR_PRIV dslogic_acquisition_stop(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context *devc;
+    devc = sdi->priv;
+    devc->status = DSLOGIC_STOP;
+    sr_info("%s: Stopping", __func__);
+    abort_acquisition(devc);
 }

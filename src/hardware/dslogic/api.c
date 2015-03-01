@@ -58,8 +58,8 @@ static const uint32_t devopts[] = {
     SR_CONF_LIMIT_SAMPLES | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
     SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+    SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     /*SR_CONF_CONN | SR_CONF_GET,
-	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
     SR_CONF_TRIGGER_SOURCE | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
 	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
@@ -622,13 +622,12 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
         //devc->capture_ratio = g_variant_get_uint64 (data);
         break;
      case SR_CONF_SAMPLERATE:
-        //devc->current_samplerate = g_variant_get_uint64(data);
-        // if (sdi->mode == LOGIC) {
-        //if (devc->current_samplerate >= SR_MHZ(200)) {
-        //    adjust_probes(sdi, SR_MHZ(1600) / devc->current_samplerate);
-        //} else {
-        //    adjust_probes(sdi, 16);
-        //}
+        ret = dev_set_sample_rate(sdi,g_variant_get_uint64(data));
+        if (dev_get_sample_rate(sdi) >= SR_MHZ(200)) {
+            adjust_probes(sdi, SR_MHZ(1600) / dev_get_sample_rate(sdi));
+        } else {
+            adjust_probes(sdi, 16);
+        }
         break;
     case SR_CONF_LIMIT_SAMPLES:
         ret = dev_set_sample_limit(sdi, g_variant_get_uint64(data));
@@ -813,11 +812,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {
 	(void) cb_data;
-	struct dev_context *devc;
-	devc = sdi->priv;
-    //devc->status = DSLOGIC_STOP;
-	sr_info("%s: Stopping", __func__);
-	abort_acquisition(sdi->priv);
+    dslogic_acquisition_stop(sdi);
 	return SR_OK;
 }
 

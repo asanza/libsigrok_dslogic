@@ -137,7 +137,6 @@ struct DSLogic_setting {
 };
 
 struct dev_context;
-SR_PRIV void abort_acquisition(struct dev_context *devc);
 SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi);
 SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename);
 SR_PRIV gboolean check_conf_profile(libusb_device *dev);
@@ -164,5 +163,6 @@ SR_PRIV voltage_range dev_get_voltage_threshold(const struct sr_dev_inst* sdi);
 SR_PRIV dev_mode dev_get_device_mode(const struct sr_dev_inst* sdi);
 SR_PRIV int dev_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value);
 SR_PRIV int dev_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate);
-SR_PRIV int dev_get_sample_rate(const struct sr_dev_inst* sdi);
+SR_PRIV uint64_t dev_get_sample_rate(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
 #endif
