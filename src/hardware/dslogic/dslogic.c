@@ -106,13 +106,13 @@ SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi) {
     setting.mode += 0<<4; //((sdi->mode > 0) << 4); 0=logic, 1= dso; 2 = analog
     setting.mode += ((devc->clock_source == CLOCK_EXT_CLK) << 1);
     setting.mode += (devc->clock_edge << 1);
-    setting.mode += (((devc->cur_samplerate == SR_MHZ(200) && 1/*sdi->mode != DSO*/) || (0/*sdi->mode == ANALOG*/)) << 5);
-    setting.mode += ((devc->cur_samplerate == SR_MHZ(400)) << 6);
+    setting.mode += (((devc->current_samplerate == SR_MHZ(200) && 1/*sdi->mode != DSO*/) || (0/*sdi->mode == ANALOG*/)) << 5);
+    setting.mode += ((devc->current_samplerate == SR_MHZ(400)) << 6);
     setting.mode += 0<<7; //((sdi->mode == ANALOG) << 7);
     setting.mode += 0<<8; //((devc->filter == SR_FILTER_1T) << 8); no filter
-    setting.divider = (uint32_t) ceil(SR_MHZ(100) * 1.0 / devc->cur_samplerate);
-    setting.count = (uint32_t) (devc->limit_samples);
-    setting.trig_pos = (uint32_t)(/*trigger->trigger_pos*/1 / 100.0f * devc->limit_samples); //danot sure about it.
+    setting.divider = (uint32_t) ceil(SR_MHZ(100) * 1.0 / devc->current_samplerate);
+    setting.count = (uint32_t) (devc->sample_limit);
+    setting.trig_pos = (uint32_t)(/*trigger->trigger_pos*/1 / 100.0f * devc->sample_limit); //danot sure about it.
     setting.trig_glb = 0; //trigger->trigger_stages; //no trigger stages
     setting.trig_adp = setting.count - setting.trig_pos - 1;
     setting.trig_sda = 0x0;
@@ -487,10 +487,10 @@ SR_PRIV unsigned int get_number_of_transfers(struct dev_context *devc) {
 }
 
 SR_PRIV unsigned int to_bytes_per_ms(struct dev_context *devc) {
-	if (devc->cur_samplerate > SR_MHZ(100))
+	if (devc->current_samplerate > SR_MHZ(100))
 		return SR_MHZ(100) / 1000 * (devc->sample_wide ? 2 : 1);
 	else
-		return devc->cur_samplerate / 1000 * (devc->sample_wide ? 2 : 1);
+		return devc->current_samplerate / 1000 * (devc->sample_wide ? 2 : 1);
 }
 
 SR_PRIV size_t get_buffer_size(struct dev_context *devc) {

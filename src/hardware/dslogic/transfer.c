@@ -88,7 +88,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 
 	/* Save incoming transfer before reusing the transfer struct. */
 	cur_buf = transfer->buffer;
-	sample_width = devc->cur_samplerate <= SR_MHZ(100) ? 2 :
+	sample_width = devc->current_samplerate <= SR_MHZ(100) ? 2 :
 		devc->sample_wide ? 2 : 1;
 		cur_sample_count = transfer->actual_length / sample_width;
 
@@ -203,9 +203,9 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				analog.mqflags = SR_MQFLAG_AC;
 				analog.data = cur_buf + trigger_offset_bytes;
 			}*/
-			if ((devc->limit_samples && devc->num_samples < devc->limit_samples) ||
+			if ((devc->sample_limit && devc->num_samples < devc->sample_limit) ||
 			    0/*(*(struct sr_dev_inst *)(devc->cb_data)).mode != LOGIC */) {
-				const uint64_t remain_length= (devc->limit_samples - devc->num_samples) * sample_width;
+				const uint64_t remain_length= (devc->sample_limit - devc->num_samples) * sample_width;
 				logic.length = min(logic.length, remain_length);
 				// in test mode, check data content
 				//if (devc->op_mode == SR_OP_INTERNAL_TEST) {
@@ -248,8 +248,8 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 
 			devc->num_samples += cur_sample_count;
 			if (/*(*(struct sr_dev_inst *)(devc->cb_data)).mode == LOGIC*/1 &&
-			    devc->limit_samples &&
-			    (unsigned int)devc->num_samples >= devc->limit_samples) {
+			    devc->sample_limit &&
+			    (unsigned int)devc->num_samples >= devc->sample_limit) {
 				//abort_acquisition(devc);
 				free_transfer(transfer);
 				devc->status = DSLOGIC_STOP;

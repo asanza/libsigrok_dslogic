@@ -46,11 +46,6 @@ static const struct {
 	{ VOLTAGE_RANGE_5_V, 1.4, 3.6},
 };
 
-static const char *filters[] = {
-	"None",
-	"1 Sample Clock",
-};
-
 static const int32_t scanopts[] = {
 	SR_CONF_CONN,
 };
@@ -68,15 +63,42 @@ static const uint32_t devopts[] = {
 	SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
+    SR_CONF_TRIGGER_SOURCE | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
 	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
 	SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-	SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-/*	SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-	SR_CONF_TEST_MODE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,*/
+    SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+    SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+    // SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+    //SR_CONF_TEST_MODE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
 };
 
+/* Names assigned to available trigger sources.  Indices must match
+ * trigger_source enum values.
+ */
+static const char *const trigger_source_names[] = { "CH", "TRG" };
+
+#define STR_PATTERN_NONE     "None"
+#define STR_PATTERN_EXTERNAL "External"
+#define STR_PATTERN_INTERNAL "Internal"
+
+/* Supported methods of test pattern outputs */
+enum {
+    /**
+     * Capture pins 31:16 (unbuffered wing) output a test pattern
+     * that can captured on pins 0:15.
+     */
+    PATTERN_EXTERNAL,
+
+    /** Route test pattern internally to capture buffer. */
+    PATTERN_INTERNAL,
+};
+
+static const char *patterns[] = {
+    STR_PATTERN_NONE,
+    STR_PATTERN_EXTERNAL,
+    STR_PATTERN_INTERNAL,
+};
 /* Helper for mapping a string-typed configuration value to an index
  * within a table of possible values.
  */
@@ -310,11 +332,11 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
 		if (probe->enabled == FALSE)
 			continue;
 
-		if ((probe->index > 7 && probe->type == SR_CHANNEL_LOGIC) ||
+        if ((probe->index > 7 && probe->type == SR_CHANNEL_LOGIC) ||
 		    (probe->type == SR_CHANNEL_ANALOG || probe->type == SR_CHANNEL_LOGIC))
 			devc->sample_wide = TRUE;
 		else
-			devc->sample_wide = FALSE;
+            devc->sample_wide = FALSE;
 
 		//probe_bit = 1 << (probe->index);
 		//if (!(probe->trigger))
@@ -595,7 +617,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
 		/* Takes >= 10ms for the FX2 to be ready for FPGA configure. */
 		g_usleep(10 * 1000);
 		char filename[256];
-		switch (devc->th_level) {
+		switch (devc->voltage_threshold) {
 			case VOLTAGE_RANGE_18_33_V:
 				sprintf(filename, "%s%s", config_path, devc->profile->fpga_bit33);
 				break;
@@ -654,6 +676,15 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 	unsigned int i;
 	(void)cg;
 	switch (id) {
+        case SR_CONF_PATTERN_MODE:
+            //if (devc->flag_reg & FLAG_EXTERNAL_TEST_MODE)
+            //    *data = g_variant_new_string(STR_PATTERN_EXTERNAL);
+            //else if (devc->flag_reg & FLAG_INTERNAL_TEST_MODE)
+                *data = g_variant_new_string(STR_PATTERN_INTERNAL);
+            //else
+            //    *data = g_variant_new_string(STR_PATTERN_NONE);
+            break;
+        break;
 		case SR_CONF_CONN:
 			if (!sdi || !sdi->conn)
 				return SR_ERR_ARG;
@@ -665,17 +696,17 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			snprintf(str, 128, "%d.%d", usb->bus, usb->address);
 			*data = g_variant_new_string(str);
 			break;
-		case SR_CONF_LIMIT_SAMPLES:
+        case SR_CONF_LIMIT_SAMPLES:
 			if (!sdi)
 				return SR_ERR;
 			devc = sdi->priv;
-			*data = g_variant_new_uint64(devc->limit_samples);
+            *data = g_variant_new_uint64(devc->sample_limit);
 			break;
 		case SR_CONF_SAMPLERATE:
 			if (!sdi)
 				return SR_ERR;
 			devc = sdi->priv;
-			*data = g_variant_new_uint64(devc->cur_samplerate);
+            *data = g_variant_new_uint64(devc->current_samplerate);
 			break;
 		case SR_CONF_EXTERNAL_CLOCK:
 			if(!sdi) return SR_ERR;
@@ -697,18 +728,18 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			//    devc = sdi->priv;
 			//    *data = g_variant_new_string(opmodes[devc->op_mode]);
 			//    break;
-		case SR_CONF_FILTER:
+        case SR_CONF_FILTER:
 			if (!sdi)
 				return SR_ERR;
 			devc = sdi->priv;
-			*data = g_variant_new_boolean (devc->filter);
+            *data = g_variant_new_boolean (devc->filter);
 			break;
 		case SR_CONF_VOLTAGE_THRESHOLD:
 			if (!sdi)
 				return SR_ERR;
 			devc = sdi->priv;
 			for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
-				if (devc->th_level !=
+				if (devc->voltage_threshold !=
 				    volt_thresholds[i].range)
 					continue;
 				range[0] = g_variant_new_double(volt_thresholds[i].low);
@@ -733,8 +764,11 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			if (!sdi)
 				return SR_ERR;
 			devc = sdi->priv;
-			*data = g_variant_new_byte(devc->trigger_source);
-			break;
+            idx = devc->trigger_source;
+            if (idx >= G_N_ELEMENTS(trigger_source_names))
+                return SR_ERR_BUG;
+            *data = g_variant_new_string(trigger_source_names[idx]);
+            break;
 			/*
 		 case SR_CONF_TRIGGER_VALUE:
 			 if (!ch)
@@ -784,78 +818,106 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
 
 	devc = sdi->priv;
 	usb = sdi->conn;
-	if(id == SR_CONF_FILTER){
-		//TODO: implement
-		ret = SR_OK;
-	}else if(id==SR_CONF_CLOCK_EDGE){
-		int idx = lookup_index(data, signal_edge_names,
-				   G_N_ELEMENTS(signal_edge_names));
-		if (idx < 0)
-			return SR_ERR_ARG;
-		devc->clock_edge = idx;
-		ret = SR_OK;
-	}else if(id==SR_CONF_EXTERNAL_CLOCK){
-		devc->clock_source = (g_variant_get_boolean(data))
-			? CLOCK_EXT_CLK : CLOCK_INTERNAL;
-		ret = SR_OK;
-	}else if(id==SR_CONF_CAPTURE_RATIO){
-		// TODO: Bind this with capture ratio
-		devc->capture_ratio = g_variant_get_uint64 (data);
-		ret = SR_OK;
-	}else if (id == SR_CONF_SAMPLERATE) {
-		devc->cur_samplerate = g_variant_get_uint64(data);
-		// if (sdi->mode == LOGIC) {
-		if (devc->cur_samplerate >= SR_MHZ(200)) {
-			adjust_probes(sdi, SR_MHZ(1600) / devc->cur_samplerate);
-		} else {
-			adjust_probes(sdi, 16);
-		}
-		ret = SR_OK;
-	} else if (id == SR_CONF_CLOCK_EDGE) {
-		devc->clock_edge = g_variant_get_boolean(data);
-		ret = SR_OK;
-	} else if (id == SR_CONF_LIMIT_SAMPLES) {
-		devc->limit_samples = g_variant_get_uint64(data);
-		ret = SR_OK;
-	} else if (id == SR_CONF_VOLTAGE_THRESHOLD) {
-		g_variant_get(data, "(dd)", &low, &high);
-		ret = SR_ERR_ARG;
-		for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
-			if (fabs(volt_thresholds[i].low - low) < 0.1 &&
-			    fabs(volt_thresholds[i].high - high) < 0.1) {
-				devc->th_level =
-					volt_thresholds[i].range;
-				break;
-			}
-		}
-		if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
-			sr_err("Send FPGA configure command failed!");
-		} else {
-			//  Takes >= 10ms for the FX2 to be ready for FPGA configure.
-			g_usleep(10 * 1000);
-			char filename[256];
-			switch(devc->th_level) {
-				case VOLTAGE_RANGE_18_33_V:
-					sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
-					break;
-				case VOLTAGE_RANGE_5_V:
-					sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
-					break;
-				default:
-					return SR_ERR;
-			}
-			const char *fpga_bit = filename;
-			ret = fpga_config(usb->devhdl, fpga_bit);
-			if (ret != SR_OK) {
-				sr_err("Configure FPGA failed!");
-			}
-		}
-		sr_dbg("%s: setting threshold to %d",
-		       __func__, devc->th_level);
-	}else {
-		ret = SR_ERR_NA;
-	}
-	return ret;
+    int idx;
+    const char* stropt;
+    switch(id){
+    case SR_CONF_TRIGGER_SOURCE:
+        idx = lookup_index(data, trigger_source_names,
+                   G_N_ELEMENTS(trigger_source_names));
+        if (idx < 0)
+            return SR_ERR_ARG;
+        devc->trigger_source = idx;
+        break;
+    case SR_CONF_PATTERN_MODE:
+        stropt = g_variant_get_string(data, NULL);
+        ret = SR_OK;
+        //flag = 0xffff;
+        if (!strcmp(stropt, STR_PATTERN_NONE)) {
+            sr_info("Disabling test modes.");
+            //flag = 0x0000;
+        }else if (!strcmp(stropt, STR_PATTERN_INTERNAL)) {
+            sr_info("Enabling internal test mode.");
+            //flag = FLAG_INTERNAL_TEST_MODE;
+        } else if (!strcmp(stropt, STR_PATTERN_EXTERNAL)) {
+            sr_info("Enabling external test mode.");
+            //flag = FLAG_EXTERNAL_TEST_MODE;
+        } else {
+            ret = SR_ERR;
+        }
+        //if (flag != 0xffff) {
+            //devc->flag_reg &= ~(FLAG_INTERNAL_TEST_MODE | FLAG_EXTERNAL_TEST_MODE);
+            //devc->flag_reg |= flag;
+        //}
+        break;
+    case SR_CONF_FILTER:
+        break;
+    case SR_CONF_CLOCK_EDGE:
+        idx = lookup_index(data, signal_edge_names,
+                   G_N_ELEMENTS(signal_edge_names));
+        if (idx < 0)
+            return SR_ERR_ARG;
+        devc->clock_edge = idx;
+        break;
+    case SR_CONF_EXTERNAL_CLOCK:
+        devc->clock_source = (g_variant_get_boolean(data))
+            ? CLOCK_EXT_CLK : CLOCK_INTERNAL;
+        break;
+    case SR_CONF_CAPTURE_RATIO:
+        // TODO: Bind this with capture ratio
+        devc->capture_ratio = g_variant_get_uint64 (data);
+        break;
+     case SR_CONF_SAMPLERATE:
+        devc->current_samplerate = g_variant_get_uint64(data);
+        // if (sdi->mode == LOGIC) {
+        if (devc->current_samplerate >= SR_MHZ(200)) {
+            adjust_probes(sdi, SR_MHZ(1600) / devc->current_samplerate);
+        } else {
+            adjust_probes(sdi, 16);
+        }
+        break;
+    case SR_CONF_LIMIT_SAMPLES:
+        devc->sample_limit = g_variant_get_uint64(data);
+        break;
+    case SR_CONF_VOLTAGE_THRESHOLD:
+        g_variant_get(data, "(dd)", &low, &high);
+        ret = SR_ERR_ARG;
+        for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
+            if (fabs(volt_thresholds[i].low - low) < 0.1 &&
+                fabs(volt_thresholds[i].high - high) < 0.1) {
+                devc->voltage_threshold =
+                    volt_thresholds[i].range;
+                break;
+            }
+        }
+        if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
+            sr_err("Send FPGA configure command failed!");
+        } else {
+            //  Takes >= 10ms for the FX2 to be ready for FPGA configure.
+            g_usleep(10 * 1000);
+            char filename[256];
+            switch(devc->voltage_threshold) {
+                case VOLTAGE_RANGE_18_33_V:
+                    sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
+                    break;
+                case VOLTAGE_RANGE_5_V:
+                    sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
+                    break;
+                default:
+                    return SR_ERR;
+            }
+            const char *fpga_bit = filename;
+            ret = fpga_config(usb->devhdl, fpga_bit);
+            if (ret != SR_OK) {
+                sr_err("Configure FPGA failed!");
+            }
+        }
+        sr_dbg("%s: setting threshold to %d",
+               __func__, devc->voltage_threshold);
+        break;
+    default:
+        return SR_ERR_NA;
+    }
+    return SR_OK;
 }
 
 static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *sdi,
@@ -868,6 +930,9 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	(void) cg;
 
 	switch (key) {
+        case SR_CONF_PATTERN_MODE:
+            *data = g_variant_new_strv(patterns, ARRAY_SIZE(patterns));
+            break;
 		case SR_CONF_SCAN_OPTIONS:
 			*data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,
 			                                  scanopts, ARRAY_SIZE(scanopts), sizeof (int32_t));
@@ -902,14 +967,23 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 			}
 			*data = g_variant_builder_end(&gvb);
 			break;
-		case SR_CONF_FILTER:
-			*data = g_variant_new_strv(filters, ARRAY_SIZE(filters));
-			break;
+        case SR_CONF_FILTER:
+            g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);
+            range[0] = g_variant_new_boolean(TRUE);
+            range[1] = g_variant_new_boolean(FALSE);
+            g_variant_builder_add_value(&gvb, range[0]);
+            g_variant_builder_add_value(&gvb, range[1]);
+            *data = g_variant_builder_end(&gvb);
+            break;
 		case SR_CONF_TRIGGER_SLOPE:
 		case SR_CONF_CLOCK_EDGE:
 			*data = g_variant_new_strv(signal_edge_names,
 					   G_N_ELEMENTS(signal_edge_names));
 		break;
+        case SR_CONF_TRIGGER_SOURCE:
+            *data = g_variant_new_strv(trigger_source_names,
+                       G_N_ELEMENTS(trigger_source_names));
+        break;
 		default:
 			return SR_ERR_NA;
 	}
@@ -963,7 +1037,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
 	}
 
 	if ((ret = command_start_acquisition(usb->devhdl,
-	                                     devc->cur_samplerate, devc->sample_wide, (1/*sdi->mode == LOGIC*/))) != SR_OK) {
+                                         devc->current_samplerate, devc->sample_wide, (1/*sdi->mode == LOGIC*/))) != SR_OK) {
 		abort_acquisition(devc);
 		return ret;
 	}
@@ -1048,18 +1122,18 @@ static struct dev_context *DSLogic_dev_new(void) {
 
 	devc->profile = NULL;
 	devc->fw_updated = 0;
-	devc->cur_samplerate = DEFAULT_SAMPLERATE;
-	devc->limit_samples = DEFAULT_SAMPLELIMIT;
+    devc->current_samplerate = DEFAULT_SAMPLERATE;
+    devc->sample_limit = DEFAULT_SAMPLELIMIT;
 	devc->sample_wide = 0;
 	devc->clock_source = CLOCK_INTERNAL;
 	devc->clock_edge = 0;
 	devc->capture_ratio = 0;
 	//    devc->op_mode = SR_OP_NORMAL;
-	devc->th_level = VOLTAGE_RANGE_18_33_V;
+	devc->voltage_threshold = VOLTAGE_RANGE_18_33_V;
 	devc->filter = FALSE;
 	//    devc->timebase = 10000;
 	//    devc->trigger_slope = DSO_TRIGGER_RISING;
-	//    devc->trigger_source = DSO_TRIGGER_AUTO;
+    devc->trigger_source = 0 ;//DSO_TRIGGER_AUTO;
 	//    devc->trigger_hpos = 0x0;
 	//    devc->zero = FALSE;
 
