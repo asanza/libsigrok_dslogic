@@ -430,7 +430,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
 		}
 		return SR_ERR;
 	}
-    ret = dev_configure_fpga(sdi);
+    ret = dslogic_configure_fpga(sdi);
 	return SR_OK;
 }
 
@@ -473,11 +473,11 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 	(void)cg;
 	switch (id) {
         case SR_CONF_LIMIT_SAMPLES:
-            *data = g_variant_new_uint64(dev_get_sample_limit(sdi));
+            *data = g_variant_new_uint64(dslogic_get_sample_limit(sdi));
             break;
         case SR_CONF_VOLTAGE_THRESHOLD:
             for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
-                if(volt_thresholds[i].range != dev_get_voltage_threshold(sdi))
+                if(volt_thresholds[i].range != dslogic_get_voltage_threshold(sdi))
                     continue;
                 range[0] = g_variant_new_double(volt_thresholds[i].low);
                 range[1] = g_variant_new_double(volt_thresholds[i].high);
@@ -486,7 +486,7 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
             }
             break;
         case SR_CONF_PATTERN_MODE:
-            mode = dev_get_device_mode(sdi);
+            mode = dslogic_get_device_mode(sdi);
             if(mode == TEST_EXTERNAL)
                 *data = g_variant_new_string(STR_PATTERN_EXTERNAL);
             else if(mode == TEST_INTERNAL)
@@ -507,7 +507,7 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			*data = g_variant_new_string(str);
 			break;
 		case SR_CONF_SAMPLERATE:
-            *data = g_variant_new_uint64(dev_get_sample_rate(sdi));
+            *data = g_variant_new_uint64(dslogic_get_sample_rate(sdi));
             break;
 		case SR_CONF_EXTERNAL_CLOCK:
 			if(!sdi) return SR_ERR;
@@ -593,13 +593,13 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
         ret = SR_OK;
         if (!strcmp(stropt, STR_PATTERN_NONE)) {
             sr_info("Disabling test modes.");
-            dev_set_device_mode(sdi,NORMAL_MODE);
+            dslogic_set_device_mode(sdi,NORMAL_MODE);
         }else if (!strcmp(stropt, STR_PATTERN_INTERNAL)) {
             sr_info("Enabling internal test mode.");
-            dev_set_device_mode(sdi,TEST_INTERNAL);
+            dslogic_set_device_mode(sdi,TEST_INTERNAL);
         } else if (!strcmp(stropt, STR_PATTERN_EXTERNAL)) {
             sr_info("Enabling external test mode.");
-            dev_set_device_mode(sdi,TEST_EXTERNAL);
+            dslogic_set_device_mode(sdi,TEST_EXTERNAL);
         } else {
             ret = SR_ERR;
         }
@@ -622,15 +622,15 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
         //devc->capture_ratio = g_variant_get_uint64 (data);
         break;
      case SR_CONF_SAMPLERATE:
-        ret = dev_set_sample_rate(sdi,g_variant_get_uint64(data));
-        if (dev_get_sample_rate(sdi) >= SR_MHZ(200)) {
-            adjust_probes(sdi, SR_MHZ(1600) / dev_get_sample_rate(sdi));
+        ret = dslogic_set_sample_rate(sdi,g_variant_get_uint64(data));
+        if (dslogic_get_sample_rate(sdi) >= SR_MHZ(200)) {
+            adjust_probes(sdi, SR_MHZ(1600) / dslogic_get_sample_rate(sdi));
         } else {
             adjust_probes(sdi, 16);
         }
         break;
     case SR_CONF_LIMIT_SAMPLES:
-        ret = dev_set_sample_limit(sdi, g_variant_get_uint64(data));
+        ret = dslogic_set_sample_limit(sdi, g_variant_get_uint64(data));
         break;
     case SR_CONF_VOLTAGE_THRESHOLD:
         g_variant_get(data, "(dd)", &low, &high);
@@ -638,7 +638,7 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
         for (i = 0; i < ARRAY_SIZE(volt_thresholds); i++) {
             if (fabs(volt_thresholds[i].low - low) < 0.1 &&
                 fabs(volt_thresholds[i].high - high) < 0.1) {
-                ret = dev_set_voltage_threshold(sdi, volt_thresholds[i].range);
+                ret = dslogic_set_voltage_threshold(sdi, volt_thresholds[i].range);
                 break;
             }
         }

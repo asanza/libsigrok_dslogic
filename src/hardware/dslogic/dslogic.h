@@ -155,14 +155,14 @@ SR_PRIV gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int v
 SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile* prof);
 SR_PRIV void dslogic_set_firmware_updated(struct dev_context* devc);
 SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di);
-SR_PRIV int dev_configure_fpga(struct sr_dev_inst* sdi);
-SR_PRIV uint64_t dev_get_sample_limit(const struct sr_dev_inst* sdi);
-SR_PRIV int dev_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value);
-SR_PRIV int dev_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value);
-SR_PRIV voltage_range dev_get_voltage_threshold(const struct sr_dev_inst* sdi);
-SR_PRIV dev_mode dev_get_device_mode(const struct sr_dev_inst* sdi);
-SR_PRIV int dev_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value);
-SR_PRIV int dev_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate);
-SR_PRIV uint64_t dev_get_sample_rate(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_configure_fpga(struct sr_dev_inst* sdi);
+SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value);
+SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value);
+SR_PRIV voltage_range dslogic_get_voltage_threshold(const struct sr_dev_inst* sdi);
+SR_PRIV dev_mode dslogic_get_device_mode(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value);
+SR_PRIV int dslogic_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate);
+SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
 #endif

@@ -710,7 +710,7 @@ SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di){
     return ret;
 }
 
-SR_PRIV int dev_configure_fpga(struct sr_dev_inst* sdi){
+SR_PRIV int dslogic_configure_fpga(struct sr_dev_inst* sdi){
     struct dev_context* devc = sdi->priv;
     struct sr_usb_dev_inst* usb = sdi->conn;
     int ret;
@@ -740,12 +740,12 @@ SR_PRIV int dev_configure_fpga(struct sr_dev_inst* sdi){
     return ret;
 }
 
-SR_PRIV uint64_t dev_get_sample_limit(const struct sr_dev_inst* sdi){
+SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi){
     struct dev_context* devc = sdi->priv;
     return devc->sample_limit;
 }
 
-SR_PRIV int dev_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value){
+SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value){
     g_assert(sdi);
     if(value < SR_MB(16)) return SR_ERR_ARG;
     struct dev_context* devc = sdi->priv;
@@ -753,13 +753,13 @@ SR_PRIV int dev_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value){
     return SR_OK;
 }
 
-SR_PRIV voltage_range dev_get_voltage_threshold(const struct sr_dev_inst* sdi){
+SR_PRIV voltage_range dslogic_get_voltage_threshold(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     return devc->voltage_threshold;
 }
 
-SR_PRIV int dev_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value){
+SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     int ret;
@@ -791,26 +791,26 @@ SR_PRIV int dev_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_ran
     return ret;
 }
 
-SR_PRIV dev_mode dev_get_device_mode(const struct sr_dev_inst* sdi){
+SR_PRIV dev_mode dslogic_get_device_mode(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     return devc->device_mode;
 }
 
-SR_PRIV int dev_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value){
+SR_PRIV int dslogic_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     devc->device_mode = value;
     return SR_OK;
 }
 
-SR_PRIV uint64_t dev_get_sample_rate(const struct sr_dev_inst* sdi){
+SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     return devc->current_samplerate;
 }
 
-SR_PRIV int dev_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate){
+SR_PRIV int dslogic_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     if(samplerate > SR_MB(400))
