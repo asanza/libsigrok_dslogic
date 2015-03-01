@@ -17,7 +17,7 @@ SR_PRIV void finish_acquisition(struct dev_context *devc) {
 	sr_err("finish acquisition: send SR_DF_END packet");
 	/* Terminate session. */
 	packet.type = SR_DF_END;
-	sr_session_send(devc->cb_data, &packet);
+    //sr_session_send(devc->cb_data, &packet);
 
 	sr_err("finish acquisition: remove fds from polling");
 	/* Remove fds from polling. */
@@ -25,10 +25,10 @@ SR_PRIV void finish_acquisition(struct dev_context *devc) {
 	//    sr_source_remove(devc->usbfd[i]);
 	//g_free(devc->usbfd);
 
-	if (devc->num_transfers != 0) {
+/*	if (devc->num_transfers != 0) {
 		devc->num_transfers = 0;
 		g_free(devc->transfers);
-	}
+    }*/
 }
 
 SR_PRIV void free_transfer(struct libusb_transfer *transfer) {
@@ -41,7 +41,7 @@ SR_PRIV void free_transfer(struct libusb_transfer *transfer) {
 	transfer->buffer = NULL;
 	libusb_free_transfer(transfer);
 
-	for (i = 0; i < devc->num_transfers; i++) {
+/*	for (i = 0; i < devc->num_transfers; i++) {
 		if (devc->transfers[i] == transfer) {
 			devc->transfers[i] = NULL;
 			break;
@@ -50,7 +50,7 @@ SR_PRIV void free_transfer(struct libusb_transfer *transfer) {
 
 	devc->submitted_transfers--;
 	if (devc->submitted_transfers == 0 && devc->status != DSLOGIC_TRIGGERED)
-		finish_acquisition(devc);
+        finish_acquisition(devc);*/
 }
 
 SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
@@ -78,17 +78,17 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 	 * If acquisition has already ended, just free any queued up
 	 * transfer that come in.
 	 */
-	if (devc->sample_count == -1) {
+    /*if (devc->sample_count == -1) {
 		free_transfer(transfer);
 		return;
-	}
+    }*/
 
 	sr_info("receive_transfer(): status %d; timeout %d; received %d bytes.",
 	        transfer->status, transfer->timeout, transfer->actual_length);
 
 	/* Save incoming transfer before reusing the transfer struct. */
 	cur_buf = transfer->buffer;
-	sample_width = devc->current_samplerate <= SR_MHZ(100) ? 2 :
+/*	sample_width = devc->current_samplerate <= SR_MHZ(100) ? 2 :
 		devc->sample_wide ? 2 : 1;
 		cur_sample_count = transfer->actual_length / sample_width;
 
@@ -100,7 +100,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				return;
 			case LIBUSB_TRANSFER_COMPLETED:
 				case LIBUSB_TRANSFER_TIMED_OUT: /* We may have received some data though. */
-					break;
+/*					break;
 			default:
 				packet_has_error = TRUE;
 				break;
@@ -114,7 +114,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				 * will work out that the samplecount is short.
 				 */
 				//abort_acquisition(devc);
-				free_transfer(transfer);
+/*				free_transfer(transfer);
 				devc->status = DSLOGIC_ERROR;
 			} else {
 				resubmit_transfer(transfer);
@@ -132,7 +132,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 					if ((cur_sample & devc->trigger_mask[devc->trigger_stage]) ==
 					    devc->trigger_value[devc->trigger_stage]) {
 						/* Match on this trigger stage. */
-						devc->trigger_buffer[devc->trigger_stage] = cur_sample;
+/*						devc->trigger_buffer[devc->trigger_stage] = cur_sample;
 						devc->trigger_stage++;
 						if (devc->trigger_stage == NUM_TRIGGER_STAGES ||
 						    devc->trigger_mask[devc->trigger_stage] == 0) {
@@ -142,14 +142,14 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 							 * TODO: Send pre-trigger buffer to session bus.
 							 * Tell the frontend we hit the trigger here.
 							 */
-							packet.type = SR_DF_TRIGGER;
+/*							packet.type = SR_DF_TRIGGER;
 							packet.payload = NULL;
 							sr_session_send(devc->cb_data, &packet);
 							/*
 							 * Send the samples that triggered it,
 							 * since we're skipping past them.
 							 */
-							packet.type = SR_DF_LOGIC;
+/*							packet.type = SR_DF_LOGIC;
 							packet.payload = &logic;
 							logic.unitsize = sizeof (*devc->trigger_buffer);
 							logic.length = devc->trigger_stage * logic.unitsize;
@@ -165,18 +165,18 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 						 * fail on seeing 00001, so we need to go back to stage 0 -- but at
 						 * the next sample from the one that matched originally, which the
 						 * counter increment at the end of the loop takes care of.
-						 */
-						i -= devc->trigger_stage;
+                         */
+/*						i -= devc->trigger_stage;
 						if (i < -1)
 							i = -1; /* Oops, went back past this buffer. */
-						/* Reset trigger stage. */
-						devc->trigger_stage = 0;
+                        /* Reset trigger stage. */
+/*						devc->trigger_stage = 0;
 					}
 			}
 		}
 		if (devc->trigger_stage == TRIGGER_FIRED) {
 			/* Send the incoming transfer to the session bus. */
-			trigger_offset_bytes = trigger_offset * sample_width;
+/*			trigger_offset_bytes = trigger_offset * sample_width;
 			if (1){//(*(struct sr_dev_inst *)(devc->cb_data)).mode == LOGIC) {
 				packet.type = SR_DF_LOGIC;
 				packet.payload = &logic;
@@ -203,9 +203,9 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				analog.mqflags = SR_MQFLAG_AC;
 				analog.data = cur_buf + trigger_offset_bytes;
 			}*/
-			if ((devc->sample_limit && devc->sample_count < devc->sample_limit) ||
-			    0/*(*(struct sr_dev_inst *)(devc->cb_data)).mode != LOGIC */) {
-				const uint64_t remain_length= (devc->sample_limit - devc->sample_count) * sample_width;
+/*			if ((devc->sample_limit && devc->sample_count < devc->sample_limit) ||
+//			    0/*(*(struct sr_dev_inst *)(devc->cb_data)).mode != LOGIC ) {
+/*				const uint64_t remain_length= (devc->sample_limit - devc->sample_count) * sample_width;
 				logic.length = min(logic.length, remain_length);
 				// in test mode, check data content
 				//if (devc->op_mode == SR_OP_INTERNAL_TEST) {
@@ -244,11 +244,11 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				//}
 				// send data to session bus 
 				//sr_session_send(devc->cb_data, &packet);
-			}
+/*			}
 
 			devc->sample_count += cur_sample_count;
-			if (/*(*(struct sr_dev_inst *)(devc->cb_data)).mode == LOGIC*/1 &&
-			    devc->sample_limit &&
+            if (/*(*(struct sr_dev_inst *)(devc->cb_data)).mode == LOGIC1 &&
+/*			    devc->sample_limit &&
 			    (unsigned int)devc->sample_count >= devc->sample_limit) {
 				//abort_acquisition(devc);
 				free_transfer(transfer);
@@ -259,7 +259,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 			// TODO: Buffer pre-trigger data in capture
 			//ratio-sized buffer.
 		}
-		resubmit_transfer(transfer);
+        resubmit_transfer(transfer);*/
 }
 
 SR_PRIV void resubmit_transfer(struct libusb_transfer *transfer) {

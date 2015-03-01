@@ -3,7 +3,7 @@
 #include <libusb.h>
 #include <libsigrok.h>
 #include "devdefs.h"
-
+#include "dslogic.h"
 #define NUM_SIMUL_TRANSFERS	64
 #define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
 

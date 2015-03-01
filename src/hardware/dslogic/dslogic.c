@@ -30,7 +30,47 @@
 #include <string.h>
 #include "libsigrok-internal.h"
 #include <math.h>
+#include "devdefs.h"
 
+struct dev_context {
+    const dslogic_profile *profile;
+    /*
+    * Since we can't keep track of an DSLogic device after upgrading
+    * the firmware (it renumerates into a different device address
+    * after the upgrade) this is like a global lock. No device will open
+    * until a proper delay after the last device was upgraded.
+    */
+    int64_t fw_updated;
+    /* libsigrok context */
+    struct sr_context* ctx;
+    /* Device/capture settings */
+    uint64_t current_samplerate;
+    uint64_t sample_limit;
+    clk_source clock_source; // EXTERNAL = TRUE
+    clk_edge clock_edge;   // RISING = 0, FALLING = 1
+    voltage_range voltage_threshold;
+    gboolean filter;
+    uint32_t capture_ratio;
+    dev_mode device_mode;
+    /* device internals */
+    int sample_count;
+    unsigned int num_transfers;
+    int submitted_transfers;
+    int empty_transfer_count;
+    void *cb_data;
+    struct libusb_transfer **transfers;
+    dslogic_status status;
+
+    /* unknow functions */
+    gboolean sample_wide;
+    int trigger_stage;
+    uint16_t trigger_mask[NUM_TRIGGER_STAGES];
+    uint16_t trigger_value[NUM_TRIGGER_STAGES];
+    uint16_t trigger_buffer[NUM_TRIGGER_STAGES];
+    uint64_t timebase;
+    uint8_t trigger_slope;
+    uint8_t trigger_source;
+};
 
 SR_PRIV void abort_acquisition(struct dev_context *devc) {
 	int i, ret;
@@ -502,4 +542,279 @@ SR_PRIV size_t get_buffer_size(struct dev_context *devc) {
 	 */
 	s = 20 * to_bytes_per_ms(devc);
     return (s + 511) & ~511;
+}
+
+static int DSLogic_dev_open(struct sr_dev_inst *sdi, struct sr_dev_driver* di) {
+    libusb_device **devlist;
+    struct sr_usb_dev_inst *usb;
+    struct libusb_device_descriptor des;
+    struct dev_context *devc;
+    struct drv_context *drvc;
+    struct version_info vi;
+    //int skip;
+    int ret, i, device_count;
+    uint8_t revid;
+    char connection_id[64];
+
+    drvc = di->priv;
+    devc = sdi->priv;
+    usb = sdi->conn;
+
+    if (sdi->status == SR_ST_ACTIVE)
+        /* Device is already in use. */
+        return SR_ERR;
+    device_count = libusb_get_device_list(drvc->sr_ctx->libusb_ctx, &devlist);
+    if (device_count < 0) {
+        sr_err("Failed to get device list: %s.",
+               libusb_error_name(device_count));
+        return SR_ERR;
+    }
+
+    for (i = 0; i < device_count; i++) {
+        if ((ret = libusb_get_device_descriptor(devlist[i], &des))) {
+            sr_err("Failed to get device descriptor: %s.",
+                   libusb_error_name(ret));
+            continue;
+        }
+
+        if (!dslogic_identify_by_vid_and_pid(devc, des.idVendor, des.idProduct))
+            continue;
+
+        if (sdi->status == SR_ST_INITIALIZING || sdi->status == SR_ST_INACTIVE) {
+            /* check device by its physical usb bus/port address */
+            usb_get_port_path(devlist[i], connection_id, sizeof (connection_id));
+            if (strcmp(sdi->connection_id, connection_id))
+                /* This is not the one. */
+                continue;
+        }
+
+        if (!(ret = libusb_open(devlist[i], &usb->devhdl))) {
+            if (usb->address == 0xff)
+                /*
+                 * First time we touch this device after FW
+                 * upload, so we don't know the address yet.
+                 */
+                usb->address = libusb_get_device_address(devlist[i]);
+        } else {
+            sr_err("pFailed to open device: %s.",
+                   libusb_error_name(ret));
+            break;
+        }
+
+        ret = command_get_fw_version(usb->devhdl, &vi);
+        if (ret != SR_OK) {
+            sr_err("Failed to get firmware version.");
+            break;
+        }
+
+        ret = command_get_revid_version(usb->devhdl, &revid);
+        if (ret != SR_OK) {
+            sr_err("Failed to get REVID.");
+            break;
+        }
+        /*
+         * Changes in major version mean incompatible/API changes, so
+         * bail out if we encounter an incompatible version.
+         * Different minor versions are OK, they should be compatible.
+         */
+        if (vi.major != DSLOGIC_REQUIRED_VERSION_MAJOR) {
+            sr_err("Expected firmware version %d.x, "
+                   "got %d.%d.", DSLOGIC_REQUIRED_VERSION_MAJOR,
+                   vi.major, vi.minor);
+            break;
+        }
+
+        sdi->status = SR_ST_ACTIVE;
+        sr_info("Opened device %a on %d.%d, "
+                "interface %d, firmware %d.%d.",
+                sdi->connection_id, usb->bus, usb->address,
+                USB_INTERFACE, vi.major, vi.minor);
+
+        sr_info("Detected REVID=%d, it's a Cypress CY7C68013%s.",
+                revid, (revid != 1) ? " (FX2)" : "A (FX2LP)");
+
+        break;
+    }
+
+    libusb_free_device_list(devlist, 1);
+    if (sdi->status != SR_ST_ACTIVE)
+        return SR_ERR;
+    return SR_OK;
+}
+
+// NEW API
+//TODO: Remove
+static const char* config_path = "/home/diego/media/DSLogic/dslogic-gui/res/";
+
+SR_PRIV struct dev_context *dslogic_dev_new(void) {
+    struct dev_context *devc;
+    if (!(devc = g_try_malloc(sizeof (struct dev_context)))) {
+        sr_err("Device context malloc failed.");
+        return NULL;
+    }
+    devc->profile = NULL;
+    devc->fw_updated = 0;
+    devc->current_samplerate = DEFAULT_SAMPLERATE;
+    devc->sample_limit = DEFAULT_SAMPLELIMIT;
+    devc->sample_wide = 0;
+    devc->clock_source = CLOCK_INTERNAL;
+    devc->clock_edge = 0;
+    devc->capture_ratio = 0;
+    devc->voltage_threshold = VOLTAGE_RANGE_18_33_V;
+    devc->filter = FALSE;
+    devc->trigger_source = 0 ;
+    devc->device_mode = NORMAL_MODE;
+    return devc;
+}
+
+
+SR_PRIV gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int vid, int pid){
+    return !(vid != devc->profile->vid
+                || pid != devc->profile->pid);
+}
+
+SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile* prof){
+    devc->profile = prof;
+}
+
+SR_PRIV void dslogic_set_firmware_updated(struct dev_context* devc){
+    devc->fw_updated = g_get_monotonic_time();
+}
+
+SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di){
+    struct dev_context* devc = sdi->priv;
+    uint64_t timediff_us, timediff_ms, ret;
+    if (devc->fw_updated > 0) {
+        sr_info("Waiting for device to reset.");
+        /* Takes >= 300ms for the FX2 to be gone from the USB bus. */
+        g_usleep(300 * 1000);
+        timediff_ms = 0;
+        while (timediff_ms < MAX_RENUM_DELAY_MS) {
+            if ((ret = DSLogic_dev_open(sdi, di)) == SR_OK)
+                break;
+            g_usleep(100 * 1000);
+
+            timediff_us = g_get_monotonic_time() - devc->fw_updated;
+            timediff_ms = timediff_us / 1000;
+            sr_spew("Waited %" PRIi64 "ms.", timediff_ms);
+        }
+        if (ret != SR_OK) {
+            sr_err("Device failed to renumerate.");
+            return SR_ERR;
+        }
+        sr_info("Device came back after %" PRIi64 "ms.", timediff_ms);
+    } else {
+        sr_info("Firmware upload was not needed.");
+        ret = DSLogic_dev_open(sdi,di);
+    }
+    return ret;
+}
+
+SR_PRIV int dev_configure_fpga(struct sr_dev_inst* sdi){
+    struct dev_context* devc = sdi->priv;
+    struct sr_usb_dev_inst* usb = sdi->conn;
+    int ret;
+    if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
+        sr_err("Send FPGA configure command failed!");
+    } else {
+        /* Takes >= 10ms for the FX2 to be ready for FPGA configure. */
+        g_usleep(10 * 1000);
+        char filename[256];
+        switch (devc->voltage_threshold) {
+            case VOLTAGE_RANGE_18_33_V:
+                sprintf(filename, "%s%s", config_path, devc->profile->fpga_bit33);
+                break;
+            case VOLTAGE_RANGE_5_V:
+                sprintf(filename, "%s%s", config_path, devc->profile->fpga_bit50);
+                break;
+            default:
+                sr_err("wrong voltage settings");
+                return SR_ERR;
+        }
+        const char *fpga_bit = filename;
+        ret = fpga_config(usb->devhdl, fpga_bit);
+        if (ret != SR_OK) {
+            sr_err("Configure FPGA failed!");
+        }
+    }
+    return ret;
+}
+
+SR_PRIV uint64_t dev_get_sample_limit(const struct sr_dev_inst* sdi){
+    struct dev_context* devc = sdi->priv;
+    return devc->sample_limit;
+}
+
+SR_PRIV int dev_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value){
+    g_assert(sdi);
+    if(value < SR_MB(16)) return SR_ERR_ARG;
+    struct dev_context* devc = sdi->priv;
+    devc->sample_limit = value;
+    return SR_OK;
+}
+
+SR_PRIV voltage_range dev_get_voltage_threshold(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    return devc->voltage_threshold;
+}
+
+SR_PRIV int dev_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    int ret;
+    devc->voltage_threshold = value;
+    struct sr_usb_dev_inst* usb = sdi->conn;
+    if ((ret = command_fpga_config(usb->devhdl)) != SR_OK) {
+        sr_err("Send FPGA configure command failed!");
+    } else {
+        //  Takes >= 10ms for the FX2 to be ready for FPGA configure.
+        g_usleep(10 * 1000);
+        char filename[256];
+        switch(devc->voltage_threshold) {
+            case VOLTAGE_RANGE_18_33_V:
+                sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit33);
+                break;
+            case VOLTAGE_RANGE_5_V:
+                sprintf(filename,"%s%s",config_path,devc->profile->fpga_bit50);
+                break;
+            default:
+                return SR_ERR;
+        }
+        const char *fpga_bit = filename;
+        ret = fpga_config(usb->devhdl, fpga_bit);
+        if (ret != SR_OK) {
+            sr_err("Configure FPGA failed!");
+        }
+    }
+    sr_dbg("%s: setting threshold to %d", __func__, devc->voltage_threshold);
+    return ret;
+}
+
+SR_PRIV dev_mode dev_get_device_mode(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    return devc->device_mode;
+}
+
+SR_PRIV int dev_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    devc->device_mode = value;
+    return SR_OK;
+}
+
+SR_PRIV int dev_get_sample_rate(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    return devc->current_samplerate;
+}
+
+SR_PRIV int dev_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    if(samplerate > SR_MB(400))
+        return SR_ERR_ARG;
+    devc->current_samplerate = samplerate;
+    return SR_OK;
 }
