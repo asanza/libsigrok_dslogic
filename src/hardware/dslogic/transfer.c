@@ -78,7 +78,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 	 * If acquisition has already ended, just free any queued up
 	 * transfer that come in.
 	 */
-	if (devc->num_samples == -1) {
+	if (devc->sample_count == -1) {
 		free_transfer(transfer);
 		return;
 	}
@@ -203,9 +203,9 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				analog.mqflags = SR_MQFLAG_AC;
 				analog.data = cur_buf + trigger_offset_bytes;
 			}*/
-			if ((devc->sample_limit && devc->num_samples < devc->sample_limit) ||
+			if ((devc->sample_limit && devc->sample_count < devc->sample_limit) ||
 			    0/*(*(struct sr_dev_inst *)(devc->cb_data)).mode != LOGIC */) {
-				const uint64_t remain_length= (devc->sample_limit - devc->num_samples) * sample_width;
+				const uint64_t remain_length= (devc->sample_limit - devc->sample_count) * sample_width;
 				logic.length = min(logic.length, remain_length);
 				// in test mode, check data content
 				//if (devc->op_mode == SR_OP_INTERNAL_TEST) {
@@ -246,10 +246,10 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 				//sr_session_send(devc->cb_data, &packet);
 			}
 
-			devc->num_samples += cur_sample_count;
+			devc->sample_count += cur_sample_count;
 			if (/*(*(struct sr_dev_inst *)(devc->cb_data)).mode == LOGIC*/1 &&
 			    devc->sample_limit &&
-			    (unsigned int)devc->num_samples >= devc->sample_limit) {
+			    (unsigned int)devc->sample_count >= devc->sample_limit) {
 				//abort_acquisition(devc);
 				free_transfer(transfer);
 				devc->status = DSLOGIC_STOP;

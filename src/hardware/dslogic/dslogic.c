@@ -36,7 +36,7 @@ SR_PRIV void abort_acquisition(struct dev_context *devc) {
 	int i, ret;
 	struct sr_usb_dev_inst *usb;
 
-	devc->num_samples = -1;
+	devc->sample_count = -1;
 
 	sr_info("%s: Stopping", __func__);
 
@@ -337,7 +337,7 @@ SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer) {
 	devc = transfer->user_data;
 	sr_info("receive trigger pos handle...");
 
-	if (devc->num_samples == -1) {
+	if (devc->sample_count == -1) {
 		free_transfer(transfer);
 		return;
 	}
@@ -360,7 +360,7 @@ SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer) {
 		logic.length = sizeof (trigger_pos->first_block);
 		//logic.data_error = 0;
 		logic.data = trigger_pos->first_block;
-		devc->num_samples += logic.length / logic.unitsize;
+		devc->sample_count += logic.length / logic.unitsize;
 	} /*else if ((*(struct sr_dev_inst *)(devc->cb_data)).mode == DSO){
 		packet.type = SR_DF_DSO;
 		packet.payload = &dso;
@@ -501,5 +501,5 @@ SR_PRIV size_t get_buffer_size(struct dev_context *devc) {
 	 * a multiple of 512.
 	 */
 	s = 20 * to_bytes_per_ms(devc);
-	return (s + 511) & ~511;
+    return (s + 511) & ~511;
 }

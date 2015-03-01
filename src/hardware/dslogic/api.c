@@ -34,11 +34,8 @@
 #include "protocol.h"
 #include "transfer.h"
 
-static const int cons_buffer_size = 1024 * 16;
-static struct dev_context *DSLogic_dev_new(void);
-
 static const struct {
-	enum voltage_range range;
+    voltage_range range;
 	gdouble low;
 	gdouble high;
 } volt_thresholds[] = {
@@ -51,8 +48,8 @@ static const int32_t scanopts[] = {
 };
 
 static const uint32_t drvopts[] = {
-	SR_CONF_LOGIC_ANALYZER,
-	SR_CONF_OSCILLOSCOPE,
+    SR_CONF_LOGIC_ANALYZER,
+    SR_CONF_OSCILLOSCOPE,
 };
 
 /* device options */
@@ -89,7 +86,6 @@ enum {
      * that can captured on pins 0:15.
      */
     PATTERN_EXTERNAL,
-
     /** Route test pattern internally to capture buffer. */
     PATTERN_INTERNAL,
 };
@@ -99,6 +95,7 @@ static const char *patterns[] = {
     STR_PATTERN_EXTERNAL,
     STR_PATTERN_INTERNAL,
 };
+
 /* Helper for mapping a string-typed configuration value to an index
  * within a table of possible values.
  */
@@ -138,49 +135,26 @@ static const char *channel_names[] = {
 	NULL,
 };
 
-static uint16_t test_sample_value;
-static uint16_t test_init = 1;
-
-static const uint64_t samplerates[] = {
-	SR_KHZ(10),
-	SR_KHZ(20),
-	SR_KHZ(50),
-	SR_KHZ(100),
-	SR_KHZ(200),
-	SR_KHZ(500),
-	SR_MHZ(1),
-	SR_MHZ(2),
-	SR_MHZ(5),
-	SR_MHZ(10),
-	SR_MHZ(20),
-	SR_MHZ(25),
-	SR_MHZ(50),
-	SR_MHZ(100),
-	SR_MHZ(200),
-	SR_MHZ(400),
-};
-
-static const uint64_t samplecounts[] = {
-	SR_KB(1),
-	SR_KB(2),
-	SR_KB(8),
-	SR_KB(8),
-	SR_KB(16),
-	SR_KB(32),
-	SR_KB(64),
-	SR_KB(128),
-	SR_KB(256),
-	SR_KB(512),
-	SR_MB(1),
-	SR_MB(2),
-	SR_MB(4),
-	SR_MB(8),
-	SR_MB(16),
-};
-
+static const int cons_buffer_size = 1024 * 16;
+static struct dev_context *dslogic_dev_new(void);
 SR_PRIV struct sr_dev_driver dslogic_driver_info;
 static struct sr_dev_driver *di = &dslogic_driver_info;
 
+static const uint64_t samplerates[] = {
+    SR_KHZ(10),	SR_KHZ(20),	SR_KHZ(50),	SR_KHZ(100),
+    SR_KHZ(200), SR_KHZ(500), SR_MHZ(1), SR_MHZ(2),
+    SR_MHZ(5),	SR_MHZ(10), SR_MHZ(20),	SR_MHZ(25),
+    SR_MHZ(50),	SR_MHZ(100), SR_MHZ(200), SR_MHZ(400),
+};
+
+static const uint64_t samplecounts[] = {
+    SR_KB(1), SR_KB(2),	SR_KB(8), SR_KB(8),
+    SR_KB(16), SR_KB(32), SR_KB(64), SR_KB(128),
+    SR_KB(256), SR_KB(512),	SR_MB(1), SR_MB(2),
+    SR_MB(4), SR_MB(8),	SR_MB(16),
+};
+
+//TODO: Remove
 const char* config_path = "/home/diego/media/DSLogic/dslogic-gui/res/";
 
 static int receive_data(int fd, int revents, void *cb_data) {
@@ -189,22 +163,18 @@ static int receive_data(int fd, int revents, void *cb_data) {
 	struct drv_context *drvc;
 	struct dev_context *devc;
 	const struct sr_dev_inst *sdi;
-
 	(void) fd;
 	(void) revents;
 	sdi = cb_data;
 	drvc = di->priv;
 	devc = sdi->priv;
-
-	if (devc->num_samples != -1 &&
+    if (devc->sample_count != -1 &&
 	    (devc->status == DSLOGIC_STOP || devc->status == DSLOGIC_ERROR)) {
 		sr_info("%s: Stopping", __func__);
 		abort_acquisition(devc);
 	}
-
 	tv.tv_sec = tv.tv_usec = 0;
 	libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
-
 	return TRUE;
 }
 
@@ -429,7 +399,7 @@ static GSList *scan(GSList *options) {
 	struct sr_dev_inst *sdi;
 	struct sr_usb_dev_inst *usb;
 	struct sr_config *src;
-	const struct DSLogic_profile *prof;
+    const struct dslogic_profile *prof;
 	GSList *l, *devices, *conn_devices;
 	struct libusb_device_descriptor des;
 	libusb_device **devlist;
@@ -510,7 +480,7 @@ static GSList *scan(GSList *options) {
 		if (set_probes(sdi, num_logic_probes) != SR_OK)
 			return NULL;
 
-		devc = DSLogic_dev_new();
+        devc = dslogic_dev_new();
 		devc->profile = prof;
 		sdi->priv = devc;
 		drvc->instances = g_slist_append(drvc->instances, sdi);
@@ -769,19 +739,6 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
                 return SR_ERR_BUG;
             *data = g_variant_new_string(trigger_source_names[idx]);
             break;
-			/*
-		 case SR_CONF_TRIGGER_VALUE:
-			 if (!ch)
-			 return SR_ERR;
-			 *data = g_variant_new_uint16(ch->trig_value);
-			 break;
-			 */
-		case SR_CONF_HORIZ_TRIGGERPOS:
-			if (!sdi)
-				return SR_ERR;
-			devc = sdi->priv;
-			*data = g_variant_new_uint16(devc->trigger_hpos);
-			break;
 		case SR_CONF_CAPTURE_RATIO:
 			if (sdi) {
 				devc = sdi->priv;
@@ -789,14 +746,6 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			} else
 				return SR_ERR_ARG;
 			return SR_OK;
-			/*
-		 case SR_CONF_ZERO:
-			 if (!sdi)
-			 return SR_ERR;
-			 devc = sdi->priv;
-			 *data = g_variant_new_boolean(devc->zero);
-			 break;
-			 */
 		default:
 			return SR_ERR_NA;
 	}
@@ -997,14 +946,13 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
 	struct libusb_transfer *transfer;
 	struct ds_trigger_pos *trigger_pos;
 	int ret;
-	test_init = 1;
 	if (sdi->status != SR_ST_ACTIVE)
 		return SR_ERR_DEV_CLOSED;
 	drvc = di->priv;
 	devc = sdi->priv;
 	usb = sdi->conn;
 	devc->cb_data = cb_data;
-	devc->num_samples = 0;
+    devc->sample_count = 0;
 	devc->empty_transfer_count = 0;
 	devc->status = DSLOGIC_INIT;
 	devc->num_transfers = 0;
@@ -1042,7 +990,6 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
 		return ret;
 	}
 
-	test_sample_value = 0;
 	devc->ctx = drvc->sr_ctx;
 	usb_source_add(sdi->session, devc->ctx, get_timeout(devc), receive_data, (void*) sdi);
 	//poll trigger status transfer
@@ -1091,51 +1038,39 @@ static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {
 
 SR_PRIV struct sr_dev_driver dslogic_driver_info = {
 	.name = "dslogic",
-	.longname = "Dreamsourcelab DSLogic http://www.dreamsourcelab.com",
+    .longname = "Dreamsourcelab DSLogic",
 	.api_version = 1,
 	.init = init,
 	.cleanup = cleanup,
 	.scan = scan,
 	.dev_list = dev_list,
-	.config_commit = NULL,
-	//.config_channel_set = set_probes,
-	.dev_clear = dev_clear,
+    .dev_clear = dev_clear,
 	.config_get = config_get,
 	.config_set = config_set,
 	.config_list = config_list,
 	.dev_open = dev_open,
 	.dev_close = dev_close,
-	//.dev_test = dev_test,
-	//.dev_status_get = dev_status_get,
 	.dev_acquisition_start = dev_acquisition_start,
 	.dev_acquisition_stop = dev_acquisition_stop,
 	.priv = NULL,
 };
 
-static struct dev_context *DSLogic_dev_new(void) {
-	struct dev_context *devc;
-
-	if (!(devc = g_try_malloc(sizeof (struct dev_context)))) {
-		sr_err("Device context malloc failed.");
-		return NULL;
-	}
-
-	devc->profile = NULL;
-	devc->fw_updated = 0;
+static struct dev_context *dslogic_dev_new(void) {
+    struct dev_context *devc;
+    if (!(devc = g_try_malloc(sizeof (struct dev_context)))) {
+        sr_err("Device context malloc failed.");
+        return NULL;
+    }
+    devc->profile = NULL;
+    devc->fw_updated = 0;
     devc->current_samplerate = DEFAULT_SAMPLERATE;
     devc->sample_limit = DEFAULT_SAMPLELIMIT;
-	devc->sample_wide = 0;
-	devc->clock_source = CLOCK_INTERNAL;
-	devc->clock_edge = 0;
-	devc->capture_ratio = 0;
-	//    devc->op_mode = SR_OP_NORMAL;
-	devc->voltage_threshold = VOLTAGE_RANGE_18_33_V;
-	devc->filter = FALSE;
-	//    devc->timebase = 10000;
-	//    devc->trigger_slope = DSO_TRIGGER_RISING;
-    devc->trigger_source = 0 ;//DSO_TRIGGER_AUTO;
-	//    devc->trigger_hpos = 0x0;
-	//    devc->zero = FALSE;
-
-	return devc;
+    devc->sample_wide = 0;
+    devc->clock_source = CLOCK_INTERNAL;
+    devc->clock_edge = 0;
+    devc->capture_ratio = 0;
+    devc->voltage_threshold = VOLTAGE_RANGE_18_33_V;
+    devc->filter = FALSE;
+    devc->trigger_source = 0 ;
+    return devc;
 }

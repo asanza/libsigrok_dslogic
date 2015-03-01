@@ -63,14 +63,8 @@
 #define SR_KB(n) ((n) * (uint64_t)(1024ULL))
 #define SR_MB(n) ((n) * (uint64_t)(1048576ULL))
 
-enum voltage_range {
-	VOLTAGE_RANGE_UNKNOWN,
-	VOLTAGE_RANGE_18_33_V,	/* 1.8V and 3.3V logic */
-	VOLTAGE_RANGE_5_V,	/* 5V logic */
-};
 
-
-static const struct DSLogic_profile supported_fx2[3] = {
+static const struct dslogic_profile supported_fx2[3] = {
 	/*
 	 * DSLogic
 	 */
