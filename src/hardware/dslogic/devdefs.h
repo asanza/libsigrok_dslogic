@@ -55,7 +55,7 @@ struct dev_context {
 	uint32_t clock_edge;
 	uint16_t op_mode;
 	uint16_t th_level;
-	uint16_t filter;
+	gboolean filter;
 	uint16_t trigger_mask[NUM_TRIGGER_STAGES];
 	uint16_t trigger_value[NUM_TRIGGER_STAGES];
 	int trigger_stage;

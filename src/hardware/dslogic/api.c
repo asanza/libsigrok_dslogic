@@ -71,8 +71,8 @@ static const uint32_t devopts[] = {
 	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
 	SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-/*	SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-	SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+	SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+/*	SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
 	SR_CONF_TEST_MODE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
 	SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,*/
 };
@@ -701,7 +701,7 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 			if (!sdi)
 				return SR_ERR;
 			devc = sdi->priv;
-			*data = g_variant_new_string(filters[devc->filter]);
+			*data = g_variant_new_boolean (devc->filter);
 			break;
 		case SR_CONF_VOLTAGE_THRESHOLD:
 			if (!sdi)
@@ -784,7 +784,10 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
 
 	devc = sdi->priv;
 	usb = sdi->conn;
-	if(id==SR_CONF_CLOCK_EDGE){
+	if(id == SR_CONF_FILTER){
+		//TODO: implement
+		ret = SR_OK;
+	}else if(id==SR_CONF_CLOCK_EDGE){
 		int idx = lookup_index(data, signal_edge_names,
 				   G_N_ELEMENTS(signal_edge_names));
 		if (idx < 0)
@@ -902,7 +905,7 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 		case SR_CONF_FILTER:
 			*data = g_variant_new_strv(filters, ARRAY_SIZE(filters));
 			break;
-		//case SR_CONF_TRIGGER_SLOPE:
+		case SR_CONF_TRIGGER_SLOPE:
 		case SR_CONF_CLOCK_EDGE:
 			*data = g_variant_new_strv(signal_edge_names,
 					   G_N_ELEMENTS(signal_edge_names));
@@ -1053,7 +1056,7 @@ static struct dev_context *DSLogic_dev_new(void) {
 	devc->capture_ratio = 0;
 	//    devc->op_mode = SR_OP_NORMAL;
 	devc->th_level = VOLTAGE_RANGE_18_33_V;
-	// devc->filter = SR_FILTER_NONE;
+	devc->filter = FALSE;
 	//    devc->timebase = 10000;
 	//    devc->trigger_slope = DSO_TRIGGER_RISING;
 	//    devc->trigger_source = DSO_TRIGGER_AUTO;
