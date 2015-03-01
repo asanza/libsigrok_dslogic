@@ -165,4 +165,12 @@ SR_PRIV int dslogic_set_device_mode(const struct sr_dev_inst* sdi, dev_mode valu
 SR_PRIV int dslogic_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate);
 SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
+SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_set_capture_ratio(const struct sr_dev_inst* sdi, uint64_t ratio);
+SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi, void* cb_data);
+SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
+                                     struct sr_dev_driver * di,
+                                     sr_receive_data_callback receive_data);
+SR_PRIV int dslogic_get_sample_count(const struct sr_dev_inst* sdi);
+SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
 #endif

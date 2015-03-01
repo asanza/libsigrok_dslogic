@@ -47,7 +47,7 @@ AH_BOTTOM([#endif /* SR_CONFIG_H */])
 
 # Enable more compiler warnings via -Wall and -Wextra. Add -fvisibility=hidden
 # and enforce use of SR_API to explicitly mark all public API functions.
-COMMON_FLAGS="$CFLAGS -Wall -Wextra -fvisibility=hidden"
+COMMON_FLAGS="$CFLAGS -g -O0 -Wall -Wextra -fvisibility=hidden"
 CFLAGS="$COMMON_FLAGS -Wmissing-prototypes"
 CXXFLAGS="-std=c++11 $COMMON_FLAGS"
 

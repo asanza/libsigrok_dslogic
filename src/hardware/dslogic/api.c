@@ -59,10 +59,10 @@ static const uint32_t devopts[] = {
     SR_CONF_VOLTAGE_THRESHOLD | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
+    SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
     /*SR_CONF_CONN | SR_CONF_GET,
 	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
     SR_CONF_TRIGGER_SOURCE | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
-	SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
 	SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
 	SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
     SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
@@ -137,7 +137,6 @@ static const char *channel_names[] = {
 
 static const int cons_buffer_size = 1024 * 16;
 SR_PRIV struct sr_dev_driver dslogic_driver_info;
-static struct sr_dev_driver *di = &dslogic_driver_info;
 
 static const uint64_t samplerates[] = {
     SR_KHZ(10),	SR_KHZ(20),	SR_KHZ(50),	SR_KHZ(100),
@@ -157,24 +156,23 @@ static const uint64_t samplecounts[] = {
 const char* config_path = "/home/diego/media/DSLogic/dslogic-gui/res/";
 
 static int receive_data(int fd, int revents, void *cb_data) {
-	//static int i = 0;
-	struct timeval tv;
-	struct drv_context *drvc;
-//	struct dev_context *devc;
-	const struct sr_dev_inst *sdi;
-	(void) fd;
-	(void) revents;
-	sdi = cb_data;
-	drvc = di->priv;
-//	devc = sdi->priv;
-    /*if (devc->sample_count != -1 &&
-	    (devc->status == DSLOGIC_STOP || devc->status == DSLOGIC_ERROR)) {
-		sr_info("%s: Stopping", __func__);
-		abort_acquisition(devc);
-    }*/
-	tv.tv_sec = tv.tv_usec = 0;
-	libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
-	return TRUE;
+    //static int i = 0;
+    struct timeval tv;
+    struct drv_context *drvc;
+    const struct sr_dev_inst *sdi;
+    (void) fd;
+    (void) revents;
+    sdi = cb_data;
+    drvc = dslogic_driver_info.priv;
+    if (dslogic_get_sample_count(sdi) != -1 &&(
+            dslogic_get_device_status(sdi) == DSLOGIC_STOP ||
+            dslogic_get_device_status(sdi) == DSLOGIC_ERROR)) {
+        sr_info("%s: Stopping", __func__);
+        dslogic_acquisition_stop(sdi);
+    }
+    tv.tv_sec = tv.tv_usec = 0;
+    libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
+    return TRUE;
 }
 
 static int configure_probes(const struct sr_dev_inst *sdi) {
@@ -234,11 +232,11 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
 }
 
 static int dev_clear(void) {
-	return std_dev_clear(di, NULL);
+    return std_dev_clear(&dslogic_driver_info, NULL);
 }
 
 static int init(struct sr_context *sr_ctx) {
-	return std_init(sr_ctx, di, LOG_PREFIX);
+    return std_init(sr_ctx, &dslogic_driver_info, LOG_PREFIX);
 }
 
 static int set_probes(struct sr_dev_inst *sdi, int num_probes) {
@@ -303,7 +301,7 @@ static GSList *scan(GSList *options) {
 	int devcnt, num_logic_probes, ret, i, j;
 	const char *conn;
 	char connection_id[64];
-	drvc = di->priv;
+    drvc = dslogic_driver_info.priv;
 
     conn = NULL;
     for (l = options; l; l = l->next) {
@@ -359,11 +357,10 @@ static GSList *scan(GSList *options) {
 		sdi->model = g_strdup("DSLogic");
 		// TODO: Read this strings from device???
 		sdi->version = g_strdup("1.0.0");
-		sdi->driver = di;
+        sdi->driver = &dslogic_driver_info;
 		sdi->connection_id = g_strdup(connection_id);
 		if (!sdi)
 			return NULL;
-		sdi->driver = di;
 		/* Fill in probelist according to this device's profile. */
 		num_logic_probes = prof->dev_caps & DEV_CAPS_16BIT ? 16 : 8;
 		if (set_probes(sdi, num_logic_probes) != SR_OK)
@@ -402,13 +399,13 @@ static GSList *scan(GSList *options) {
 }
 
 static GSList *dev_list(void) {
-    return ((struct drv_context *) (di->priv))->instances;
+    return ((struct drv_context *) (dslogic_driver_info.priv))->instances;
 }
 
 static int dev_open(struct sr_dev_inst *sdi) {
 	struct sr_usb_dev_inst *usb;
 	usb = sdi->conn;
-    int ret = dslogic_dev_open(sdi, di);
+    int ret = dslogic_dev_open(sdi, &dslogic_driver_info);
 	if (ret != SR_OK) {
 		sr_err("Unable to open device.");
 		return SR_ERR;
@@ -451,15 +448,11 @@ static int dev_close(struct sr_dev_inst *sdi) {
 static int cleanup(void) {
 	int ret;
 	struct drv_context *drvc;
-
-	if (!(drvc = di->priv))
+    if (!(drvc = dslogic_driver_info.priv))
 		return SR_OK;
-
 	ret = dev_clear();
-
 	g_free(drvc);
-	di->priv = NULL;
-
+    dslogic_driver_info.priv = NULL;
 	return ret;
 }
 
@@ -495,7 +488,10 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
                 *data = g_variant_new_string(STR_PATTERN_NONE);
             break;
         break;
-		case SR_CONF_CONN:
+        case SR_CONF_CAPTURE_RATIO:
+            *data = g_variant_new_uint64(dslogic_get_capture_ratio(sdi));
+        break;
+        case SR_CONF_CONN:
 			if (!sdi || !sdi->conn)
 				return SR_ERR_ARG;
 			usb = sdi->conn;
@@ -523,12 +519,6 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 				return SR_ERR_BUG;
 			*data = g_variant_new_string(signal_edge_names[idx]);
 			break;
-		//case SR_CONF_OPERATION_MODE:
-			//    if (!sdi)
-			//        return SR_ERR;
-			//    devc = sdi->priv;
-			//    *data = g_variant_new_string(opmodes[devc->op_mode]);
-			//    break;
         case SR_CONF_FILTER:
 			if (!sdi)
 				return SR_ERR;
@@ -556,12 +546,6 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
                 return SR_ERR_BUG;
             *data = g_variant_new_string(trigger_source_names[idx]);
             break;
-		case SR_CONF_CAPTURE_RATIO:
-			if (sdi) {
-//                //*data = g_variant_new_uint64(devc->capture_ratio);
-			} else
-				return SR_ERR_ARG;
-			return SR_OK;
 		default:
 			return SR_ERR_NA;
 	}
@@ -572,7 +556,7 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi,
                       const struct sr_channel_group *cg) {
 	(void)cg;
-	int ret;
+    int ret = SR_OK;
 	unsigned int i;
 	gdouble low, high;
 	if (sdi->status != SR_ST_ACTIVE)
@@ -604,6 +588,17 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
             ret = SR_ERR;
         }
         break;
+    case SR_CONF_CAPTURE_RATIO:
+        ret = dslogic_set_capture_ratio(sdi, g_variant_get_uint64(data));
+        break;
+    case SR_CONF_SAMPLERATE:
+       ret = dslogic_set_sample_rate(sdi,g_variant_get_uint64(data));
+       if (dslogic_get_sample_rate(sdi) >= SR_MHZ(200)) {
+           adjust_probes(sdi, SR_MHZ(1600) / dslogic_get_sample_rate(sdi));
+       } else {
+           adjust_probes(sdi, 16);
+       }
+       break;
     case SR_CONF_FILTER:
         break;
     case SR_CONF_CLOCK_EDGE:
@@ -616,18 +611,6 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
     case SR_CONF_EXTERNAL_CLOCK:
         //devc->clock_source = (g_variant_get_boolean(data))
             //? CLOCK_EXT_CLK : CLOCK_INTERNAL;
-        break;
-    case SR_CONF_CAPTURE_RATIO:
-        // TODO: Bind this with capture ratio
-        //devc->capture_ratio = g_variant_get_uint64 (data);
-        break;
-     case SR_CONF_SAMPLERATE:
-        ret = dslogic_set_sample_rate(sdi,g_variant_get_uint64(data));
-        if (dslogic_get_sample_rate(sdi) >= SR_MHZ(200)) {
-            adjust_probes(sdi, SR_MHZ(1600) / dslogic_get_sample_rate(sdi));
-        } else {
-            adjust_probes(sdi, 16);
-        }
         break;
     case SR_CONF_LIMIT_SAMPLES:
         ret = dslogic_set_sample_limit(sdi, g_variant_get_uint64(data));
@@ -724,90 +707,15 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 }
 
 static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
-	struct dev_context *devc;
-	struct drv_context *drvc;
-	struct sr_usb_dev_inst *usb;
-	struct libusb_transfer *transfer;
-	struct ds_trigger_pos *trigger_pos;
-	int ret;
 	if (sdi->status != SR_ST_ACTIVE)
 		return SR_ERR_DEV_CLOSED;
-	drvc = di->priv;
-	devc = sdi->priv;
-	usb = sdi->conn;
-//	devc->cb_data = cb_data;
-//    devc->sample_count = 0;
-//	devc->empty_transfer_count = 0;
-//	devc->status = DSLOGIC_INIT;
-//	devc->num_transfers = 0;
-//	devc->submitted_transfers = 0;
-	/* Configures devc->trigger_* and devc->sample_wide */
-	if (configure_probes(sdi) != SR_OK) {
+    if (configure_probes(sdi) != SR_OK) {
 		sr_err("Failed to configure probes.");
 		return SR_ERR;
 	}
-
-	/* Stop Previous GPIF acquisition */
-
-	if ((ret = command_stop_acquisition(usb->devhdl)) != SR_OK) {
-		sr_err("Stop DSLogic acquisition failed!");
-		abort_acquisition(devc);
-		return ret;
-	} else {
-		sr_info("Stop Previous DSLogic acquisition!");
-	}
-
-	/* Setting FPGA before acquisition start*/
-	if ((ret = command_fpga_setting(usb->devhdl, sizeof (struct DSLogic_setting) / sizeof (uint16_t))) != SR_OK) {
-		sr_err("Send FPGA setting command failed!");
-	} else {
-		if ((ret = fpga_setting(sdi)) != SR_OK) {
-			sr_err("Configure FPGA failed!");
-			abort_acquisition(devc);
-			return ret;
-		}
-	}
-
-    /*if ((ret = command_start_acquisition(usb->devhdl,
-                                         devc->current_samplerate, devc->sample_wide, (1/*sdi->mode == LOGIC))) != SR_OK) {
-        abort_acquisition(devc);
-		return ret;
-    }*/
-
-/*	devc->ctx = drvc->sr_ctx;
-	usb_source_add(sdi->session, devc->ctx, get_timeout(devc), receive_data, (void*) sdi);
-	//poll trigger status transfer
-	if (!(trigger_pos = g_try_malloc0(sizeof (struct ds_trigger_pos)))) {
-		sr_err("USB trigger_pos buffer malloc failed.");
-		return SR_ERR_MALLOC;
-	}
-	devc->transfers = g_try_malloc0(sizeof (*devc->transfers));
-	if (!devc->transfers) {
-		sr_err("USB trigger_pos transfer malloc failed.");
-		return SR_ERR_MALLOC;
-	}
-	devc->num_transfers = 1;
-	transfer = libusb_alloc_transfer(0);
-	libusb_fill_bulk_transfer(transfer, usb->devhdl,
-	                          6 | LIBUSB_ENDPOINT_IN, (unsigned char*)trigger_pos, sizeof (struct ds_trigger_pos),
-	                          receive_trigger_pos, devc, 0);
-	if ((ret = libusb_submit_transfer(transfer)) != 0) {
-		sr_err("Failed to submit trigger_pos transfer: %s.",
-		       libusb_error_name(ret));
-		libusb_free_transfer(transfer);
-		g_free(trigger_pos);
-		abort_acquisition(devc);
-		return SR_ERR;
-	}
-	devc->transfers[0] = transfer;
-	devc->submitted_transfers++;
-
-	devc->status = DSLOGIC_START;
-	// Send header packet to the session bus. 
-	//std_session_send_df_header(cb_data, LOG_PREFIX);
-	std_session_send_df_header(sdi, LOG_PREFIX);
-*/
-	return SR_OK;
+    int ret = dslogic_send_fpga_settings(sdi, cb_data);
+    if(ret!=SR_OK) return ret;
+    ret = dslogic_set_usb_transfer(sdi, &dslogic_driver_info, receive_data);
 }
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {
