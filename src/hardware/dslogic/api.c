@@ -191,7 +191,6 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
 		probe = (struct sr_channel *) l->data;
 		if (probe->enabled == FALSE)
 			continue;
-        dslogic_set_sample_wide(sdi, probe->index);
         dslogic_set_trigger_stage(sdi);
         //probe_bit = 1 << (probe->index);
         //if (!(probe->trigger))
@@ -230,40 +229,26 @@ static int init(struct sr_context *sr_ctx) {
 static int set_probes(struct sr_dev_inst *sdi, int num_probes) {
 	int j;
 	struct sr_channel *probe;
-
 	for (j = 0; j < num_probes; j++) {
 		probe = sr_channel_new(j, SR_CHANNEL_LOGIC, TRUE, channel_names[j]);
-		//if (!(probe = sr_channel_new(j, (sdi->mode == LOGIC) ? SR_CHANNEL_LOGIC : ((sdi->mode == DSO) ? SR_CHANNEL_DSO : SR_CHANNEL_ANALOG),
-		//                                   TRUE, probe_names[j])))
 		if (!probe) return SR_ERR;
-		/*
-		 if (sdi->mode == DSO) {
-			 probe->vdiv = 1000;
-			 probe->coupling = FALSE;
-			 probe->trig_value = 0x80;
-	}*/
-		//printf("Adding Channel: %d\n",j);
 		sdi->channels = g_slist_append(sdi->channels, probe);
 	}
+    sr_dbg("Setting Probes: %d ", num_probes);
 	return SR_OK;
 }
 
 static int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
-	printf("adjust_probes\n");
-	int j;
+    int j;
 	GSList *l;
 	struct sr_channel *probe;
 	GSList *p;
 	(void)p;
 	(void)l;
-	assert(num_probes > 0);
-
+    assert(num_probes > 0);
 	j = g_slist_length(sdi->channels);
 	while(j < num_probes) {
-		//if (!(probe = sr_channel_new(j, (sdi->mode == LOGIC) ? SR_CHANNEL_LOGIC : ((sdi->mode == DSO) ? SR_CHANNEL_DSO : SR_CHANNEL_ANALOG),
-		//                            TRUE, probe_names[j])))
-		probe = sr_channel_new (j,SR_CHANNEL_LOGIC,TRUE, channel_names[j]);
-		return SR_ERR;
+        probe = sr_channel_new (j,SR_CHANNEL_LOGIC,TRUE, channel_names[j]);
 		sdi->channels = g_slist_append(sdi->channels, probe);
 		j++;
 	}
@@ -272,7 +257,7 @@ static int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
 		p = g_slist_delete_link(sdi->channels, g_slist_last(sdi->channels));
 		j--;
 	}
-
+    dslogic_set_sample_wide(sdi, num_probes);
 	return SR_OK;
 }
 

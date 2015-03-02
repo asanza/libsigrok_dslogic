@@ -74,6 +74,9 @@ struct dev_context {
      * FALSE = 8 channels */
     gboolean sample_wide;
 
+    /*sigrok context*/
+    struct sr_context* ctx;
+
     /* unknow functions */
     int trigger_stage;
     uint16_t trigger_mask[NUM_TRIGGER_STAGES];
@@ -84,7 +87,8 @@ struct dev_context {
     uint8_t trigger_source;
 };
 
-static void finish_acquisition(struct dev_context *devc) {
+static void finish_acquisition(const struct sr_dev_inst *sdi) {
+    struct dev_context *devc = sdi->priv;
     struct sr_datafeed_packet packet;
     sr_err("finish acquisition: send SR_DF_END packet");
     /* Terminate session. */
@@ -100,10 +104,9 @@ static void finish_acquisition(struct dev_context *devc) {
 
 static void free_transfer(struct libusb_transfer *transfer)
 {
-    struct dev_context *devc;
+    struct sr_dev_inst *sdi = transfer->user_data;
+    struct dev_context *devc = sdi->priv;
     unsigned int i;
-
-    devc = transfer->user_data;
 
     g_free(transfer->buffer);
     transfer->buffer = NULL;
@@ -118,7 +121,7 @@ static void free_transfer(struct libusb_transfer *transfer)
 
     devc->submitted_transfers--;
     if (devc->submitted_transfers == 0 && devc->status != DSLOGIC_TRIGGERED)
-        finish_acquisition(devc);
+        finish_acquisition(sdi);
 }
 
 SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi) {
@@ -414,12 +417,12 @@ SR_PRIV int dev_test(struct sr_dev_inst *sdi) {
 }
 
 SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer) {
-    struct dev_context *devc;
+    struct sr_dev_inst *sdi = transfer->user_data;
+    struct dev_context *devc = sdi->priv;
     struct sr_datafeed_packet packet;
     struct sr_datafeed_logic logic;
     struct ds_trigger_pos *trigger_pos;
     int ret;
-    devc = transfer->user_data;
     sr_info("receive trigger pos handle...");
     if (devc->sample_count == -1) {
         free_transfer(transfer);
@@ -505,7 +508,7 @@ SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi) {
         transfer = libusb_alloc_transfer(0);
         libusb_fill_bulk_transfer(transfer, usb->devhdl,
                                   6 | LIBUSB_ENDPOINT_IN, buf, size,
-                                  dslogic_receive_transfer, devc, 0);
+                                  dslogic_receive_transfer, sdi, 0);
         if ((ret = libusb_submit_transfer(transfer)) != 0) {
             sr_err("Failed to submit transfer: %s.",
                    libusb_error_name(ret));
@@ -860,6 +863,7 @@ SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide){
         devc->sample_wide = TRUE;
     else
         devc->sample_wide = FALSE;
+    sr_dbg("setting sample wide: %d, Num Probes: %d", devc->sample_wide, wide);
 }
 
 SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi){
@@ -933,7 +937,7 @@ SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
                               6 | LIBUSB_ENDPOINT_IN,
                               (unsigned char*)trigger_pos,
                               sizeof (struct ds_trigger_pos),
-                              receive_trigger_pos, devc, 0);
+                              receive_trigger_pos, sdi, 0);
     if ((ret = libusb_submit_transfer(transfer)) != 0) {
         sr_err("Failed to submit trigger_pos transfer: %s.",
                libusb_error_name(ret));
@@ -942,6 +946,7 @@ SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
         abort_acquisition(sdi);
         return SR_ERR;
     }
+    devc->ctx = drvc->sr_ctx;
     usb_source_add(sdi->session, drvc->sr_ctx, get_timeout(devc), receive_data, (void*) sdi);
     devc->transfers[0] = transfer;
     devc->submitted_transfers++;
@@ -959,7 +964,8 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
      struct sr_datafeed_dso dso;
      */
     //struct sr_datafeed_analog analog;
-    struct dev_context *devc;
+    struct sr_dev_inst* sdi = transfer->user_data;
+    struct dev_context *devc = sdi->priv;
     int trigger_offset;
     int i, sample_width, cur_sample_count;
     int trigger_offset_bytes;
@@ -969,7 +975,6 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 
     sr_dbg("receive_transfer: current time %d sec %d usec",
            cur_time.tv_sec, cur_time.tv_usec);
-    devc = transfer->user_data;
     /*
      * If acquisition has already ended, just free any queued up
      * transfer that come in.
