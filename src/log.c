@@ -41,7 +41,7 @@
  */
 
 /* Currently selected libsigrok loglevel. Default: SR_LOG_WARN. */
-static int cur_loglevel = SR_LOG_WARN; /* Show errors+warnings per default. */
+static int cur_loglevel = SR_LOG_SPEW; /* Show errors+warnings per default. */
 
 /* Function prototype. */
 static int sr_logv(void *cb_data, int loglevel, const char *format,

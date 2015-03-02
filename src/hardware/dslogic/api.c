@@ -168,7 +168,7 @@ static int receive_data(int fd, int revents, void *cb_data) {
             dslogic_get_device_status(sdi) == DSLOGIC_STOP ||
             dslogic_get_device_status(sdi) == DSLOGIC_ERROR)) {
         sr_info("%s: Stopping", __func__);
-        dslogic_acquisition_stop(sdi);
+        abort_acquisition(sdi);
     }
     tv.tv_sec = tv.tv_usec = 0;
     libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
@@ -180,35 +180,24 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
 	struct dev_context *devc;
 	struct sr_channel *probe;
 	GSList *l;
-	//int probe_bit;
+    int probe_bit;
 	int  i;
-	//int stage;
+    int stage = -1;
 	//char *tc;
 
 	devc = sdi->priv;
-    /*for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
-		devc->trigger_mask[i] = 0;
-		devc->trigger_value[i] = 0;
-    }*/
-
-	//stage = -1;
+    dslogic_clear_trigger_stages(sdi);
 	for (l = sdi->channels; l; l = l->next) {
 		probe = (struct sr_channel *) l->data;
 		if (probe->enabled == FALSE)
 			continue;
-
-        //if ((probe->index > 7 && probe->type == SR_CHANNEL_LOGIC) ||
-          //  (probe->type == SR_CHANNEL_ANALOG || probe->type == SR_CHANNEL_LOGIC))
-            //devc->sample_wide = TRUE;
-        //else
-         //   devc->sample_wide = FALSE;
-
-		//probe_bit = 1 << (probe->index);
-		//if (!(probe->trigger))
-		//			continue;
-
-		//stage = 0;
-		//		for (tc = probe->trigger; *tc; tc++) {
+        dslogic_set_sample_wide(sdi, probe->index);
+        dslogic_set_trigger_stage(sdi);
+        //probe_bit = 1 << (probe->index);
+        //if (!(probe->trigger))
+        //            continue;
+        //stage = 0;
+        //for (tc = probe->trigger; *tc; tc++) {
 		//			devc->trigger_mask[stage] |= probe_bit;
 		//			if (*tc == '1')
 		//				devc->trigger_value[stage] |= probe_bit;
@@ -216,17 +205,16 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
 		//			if (stage > NUM_TRIGGER_STAGES)
 		//                return SR_ERR;
 		//		}
-		//	}
+        //}
 
-		//	if (stage == -1)
+        //if (stage == -1)
 		/*
 		 * We didn't configure any triggers, make sure acquisition
 		 * doesn't wait for any.
 		 */
-		//		devc->trigger_stage = TRIGGER_FIRED;
-		//	else
-		//		devc->trigger_stage = 0;
         //devc->trigger_stage = TRIGGER_FIRED;
+        //else
+                //devc->trigger_stage = 0;
 	}
 	return SR_OK;
 }
@@ -592,7 +580,7 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
         ret = dslogic_set_capture_ratio(sdi, g_variant_get_uint64(data));
         break;
     case SR_CONF_SAMPLERATE:
-       ret = dslogic_set_sample_rate(sdi,g_variant_get_uint64(data));
+       ret = dslogic_set_samplerate(sdi,g_variant_get_uint64(data));
        if (dslogic_get_sample_rate(sdi) >= SR_MHZ(200)) {
            adjust_probes(sdi, SR_MHZ(1600) / dslogic_get_sample_rate(sdi));
        } else {
@@ -641,12 +629,10 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 	(void) cg;
 	switch (key) {
         case SR_CONF_LIMIT_SAMPLES:
-            g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));
-            gvar = g_variant_new_fixed_array(G_VARIANT_TYPE("t"), samplecounts,
-                                             ARRAY_SIZE(samplecounts), sizeof (uint64_t));
-            g_variant_builder_add(&gvb, "{sv}", "samplecounts", gvar);
-            *data = g_variant_builder_end(&gvb);
-        break;
+            range[0] = g_variant_new_uint64(samplecounts[0]);
+            range[1] = g_variant_new_uint64(samplecounts[sizeof(samplecounts)/sizeof(uint64_t)-1]);
+            *data = g_variant_new_tuple(range, 2);
+            break;
         case SR_CONF_PATTERN_MODE:
             *data = g_variant_new_strv(patterns, ARRAY_SIZE(patterns));
             break;
@@ -663,10 +649,10 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 				                                  devopts, ARRAY_SIZE(devopts), sizeof (uint32_t));
 			break;
 		case SR_CONF_SAMPLERATE:
-			g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));
+            g_variant_builder_init(&gvb, G_VARIANT_TYPE("a{sv}"));
             gvar = g_variant_new_fixed_array(G_VARIANT_TYPE("t"), samplerates,
                                              ARRAY_SIZE(samplerates), sizeof (uint64_t));
-			g_variant_builder_add(&gvb, "{sv}", "samplerates", gvar);
+            g_variant_builder_add(&gvb, "{sv}", "samplerates", gvar);
 			*data = g_variant_builder_end(&gvb);
 			break;
 		case SR_CONF_TRIGGER_MATCH:

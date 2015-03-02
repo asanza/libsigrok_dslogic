@@ -28,6 +28,7 @@
 #include "transfer.h"
 #include <errno.h>
 #include <string.h>
+#include "libsigrok.h"
 #include "libsigrok-internal.h"
 #include <math.h>
 #include "devdefs.h"
@@ -69,9 +70,11 @@ struct dev_context {
     void *cb_data;
     struct libusb_transfer **transfers;
     dslogic_status status;
+    /* wide of sample. TRUE = 16 channels (2 bytes),
+     * FALSE = 8 channels */
+    gboolean sample_wide;
 
     /* unknow functions */
-    gboolean sample_wide;
     int trigger_stage;
     uint16_t trigger_mask[NUM_TRIGGER_STAGES];
     uint16_t trigger_value[NUM_TRIGGER_STAGES];
@@ -81,25 +84,61 @@ struct dev_context {
     uint8_t trigger_source;
 };
 
-static void abort_acquisition(struct dev_context *devc) {
+static void finish_acquisition(struct dev_context *devc) {
+    struct sr_datafeed_packet packet;
+    sr_err("finish acquisition: send SR_DF_END packet");
+    /* Terminate session. */
+    packet.type = SR_DF_END;
+    sr_session_send(devc->cb_data, &packet);
+    sr_err("finish acquisition: remove fds from polling");
+    if (devc->num_transfers != 0) {
+        devc->num_transfers = 0;
+        g_free(devc->transfers);
+    }
+    usb_source_remove(sdi->session, devc->ctx);
+}
+
+static void free_transfer(struct libusb_transfer *transfer)
+{
+    struct dev_context *devc;
+    unsigned int i;
+
+    devc = transfer->user_data;
+
+    g_free(transfer->buffer);
+    transfer->buffer = NULL;
+    libusb_free_transfer(transfer);
+
+    for (i = 0; i < devc->num_transfers; i++) {
+        if (devc->transfers[i] == transfer) {
+            devc->transfers[i] = NULL;
+            break;
+        }
+    }
+
+    devc->submitted_transfers--;
+    if (devc->submitted_transfers == 0 && devc->status != DSLOGIC_TRIGGERED)
+        finish_acquisition(devc);
+}
+
+SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi) {
+    g_assert(sdi);
+    struct dev_context *devc = sdi->priv;
     int i, ret;
     struct sr_usb_dev_inst *usb;
-
     devc->sample_count = -1;
-
     sr_info("%s: Stopping", __func__);
-
     /* Stop GPIF acquisition */
     usb = ((struct sr_dev_inst *) devc->cb_data)->conn;
     if ((ret = command_stop_acquisition (usb->devhdl)) != SR_OK)
         sr_err("Stop DSLogic acquisition failed!");
     else
         sr_info("Stop DSLogic acquisition!");
-
     /* Cancel exist transfers */
     for (i = devc->num_transfers - 1; i >= 0; i--) {
-        if (devc->transfers[i])
+        if (devc->transfers[i]){
             libusb_cancel_transfer(devc->transfers[i]);
+        }
     }
 }
 
@@ -148,7 +187,7 @@ SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi) {
     setting.end_sync = 0xfa5afa5a;
 
     //setting.mode = (test_mode ? 0x8000 : 0x0000) + trigger->trigger_en + (sdi->mode << 4);
-    setting.mode = 0<<15; //((devc->op_mode == SR_OP_INTERNAL_TEST) << 15);
+    setting.mode = 1<<15; //((devc->op_mode == SR_OP_INTERNAL_TEST) << 15);
     setting.mode += 0<<14; //((devc->op_mode == SR_OP_EXTERNAL_TEST) << 14);
     setting.mode += 0<<13; //((devc->op_mode == SR_OP_LOOPBACK_TEST) << 13);
     setting.mode += 0; //trigger->trigger_en;
@@ -472,7 +511,7 @@ SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi) {
                    libusb_error_name(ret));
             libusb_free_transfer(transfer);
             g_free(buf);
-            abort_acquisition(devc);
+            abort_acquisition(sdi);
             return SR_ERR;
         }
         devc->transfers[i] = transfer;
@@ -625,7 +664,7 @@ SR_PRIV struct dev_context *dslogic_dev_new(void) {
     devc->fw_updated = 0;
     devc->current_samplerate = DEFAULT_SAMPLERATE;
     devc->sample_limit = DEFAULT_SAMPLELIMIT;
-    devc->sample_wide = 0;
+    devc->sample_wide = 1; //TODO: autoadjust sample wide
     devc->clock_source = CLOCK_INTERNAL;
     devc->clock_edge = 0;
     devc->capture_ratio = 0;
@@ -716,9 +755,11 @@ SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi){
 
 SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value){
     g_assert(sdi);
-    if(value < SR_MB(16)) return SR_ERR_ARG;
+    if(value > SR_MB(16))
+        return SR_ERR_ARG;
     struct dev_context* devc = sdi->priv;
     devc->sample_limit = value;
+    sr_dbg("New Sample Limit: %d", devc->sample_limit);
     return SR_OK;
 }
 
@@ -756,12 +797,13 @@ SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi){
     return devc->current_samplerate;
 }
 
-SR_PRIV int dslogic_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate){
+SR_PRIV int dslogic_set_samplerate(const struct sr_dev_inst* sdi, uint64_t samplerate){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     if(samplerate > SR_MB(400))
         return SR_ERR_ARG;
     devc->current_samplerate = samplerate;
+    sr_dbg("New samplerate: %d", devc->current_samplerate);
     return SR_OK;
 }
 
@@ -771,7 +813,7 @@ SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi){
     devc = sdi->priv;
     devc->status = DSLOGIC_STOP;
     sr_info("%s: Stopping", __func__);
-    abort_acquisition(devc);
+    abort_acquisition(sdi);
 }
 
 SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi){
@@ -801,6 +843,31 @@ SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi){
     return devc->status;
 }
 
+SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context *devc = sdi->priv;
+    int i;
+    for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
+        devc->trigger_mask[i] = 0;
+        devc->trigger_value[i] = 0;
+    }
+}
+
+SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide){
+    g_assert(sdi);
+    struct dev_context *devc = sdi->priv;
+    if ( wide > 7 )
+        devc->sample_wide = TRUE;
+    else
+        devc->sample_wide = FALSE;
+}
+
+SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context *devc = sdi->priv;
+    devc->trigger_stage = TRIGGER_FIRED;
+}
+
 SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
                                        void* cb_data){
     g_assert(sdi);
@@ -816,7 +883,7 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
     devc->submitted_transfers = 0;
     if ((ret = command_stop_acquisition(usb->devhdl)) != SR_OK) {
         sr_err("Stop DSLogic acquisition failed!");
-        abort_acquisition(devc);
+        abort_acquisition(sdi);
         return ret;
     } else {
         sr_info("Previous DSLogic acquisition stopped!");
@@ -827,7 +894,7 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
     } else {
         if ((ret = fpga_setting(sdi)) != SR_OK) {
             sr_err("Configure FPGA failed!");
-            abort_acquisition(devc);
+            abort_acquisition(sdi);
             return ret;
         }
     }
@@ -847,7 +914,7 @@ SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
     int ret;
     if ((ret = command_start_acquisition(usb->devhdl,devc->current_samplerate,
                                          devc->sample_wide, TRUE)) != SR_OK) {
-        abort_acquisition(devc);
+        abort_acquisition(sdi);
         return ret;
     }
     devc->transfers = g_try_malloc0(sizeof (*devc->transfers));
@@ -872,7 +939,7 @@ SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
                libusb_error_name(ret));
         libusb_free_transfer(transfer);
         g_free(trigger_pos);
-        abort_acquisition(devc);
+        abort_acquisition(sdi);
         return SR_ERR;
     }
     usb_source_add(sdi->session, drvc->sr_ctx, get_timeout(devc), receive_data, (void*) sdi);
@@ -898,20 +965,23 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
     int trigger_offset_bytes;
     uint8_t *cur_buf;
     GTimeVal cur_time;
+    g_get_current_time(&cur_time);
 
-    sr_info("receive_transfer: current time %d sec %d usec", cur_time.tv_sec, cur_time.tv_usec);
+    sr_dbg("receive_transfer: current time %d sec %d usec",
+           cur_time.tv_sec, cur_time.tv_usec);
     devc = transfer->user_data;
     /*
      * If acquisition has already ended, just free any queued up
      * transfer that come in.
      */
     if (devc->sample_count == -1) {
+        sr_dbg("receive_data: already ended");
         free_transfer(transfer);
         return;
     }
 
-    sr_info("receive_transfer(): status %d; timeout %d; received %d bytes.",
-            transfer->status, transfer->timeout, transfer->actual_length);
+    sr_dbg("receive_transfer: status %d; timeout %d; received %d bytes.",
+           transfer->status, transfer->timeout, transfer->actual_length);
 
     /* Save incoming transfer before reusing the transfer struct. */
     cur_buf = transfer->buffer;
@@ -919,17 +989,17 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
                                                              devc->sample_wide ? 2 : 1;
     cur_sample_count = transfer->actual_length / sample_width;
     switch (transfer->status) {
-    case LIBUSB_TRANSFER_NO_DEVICE:
-        //abort_acquisition(devc);
-        free_transfer(transfer);
-        devc->status = DSLOGIC_ERROR;
-        return;
-    case LIBUSB_TRANSFER_COMPLETED:
-    case LIBUSB_TRANSFER_TIMED_OUT: /* We may have received some data though. */
-        break;
-    default:
-        packet_has_error = TRUE;
-        break;
+        case LIBUSB_TRANSFER_NO_DEVICE:
+            //abort_acquisition(devc);
+            free_transfer(transfer);
+            devc->status = DSLOGIC_ERROR;
+            return;
+        case LIBUSB_TRANSFER_COMPLETED:
+        case LIBUSB_TRANSFER_TIMED_OUT: /* We may have received some data though. */
+            break;
+        default:
+            packet_has_error = TRUE;
+            break;
     }
 
     if (transfer->actual_length == 0 || packet_has_error) {
@@ -940,13 +1010,16 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
                  * will work out that the samplecount is short.
                  */
             //abort_acquisition(devc);
+            sr_dbg("receive_transfer: error");
             free_transfer(transfer);
             devc->status = DSLOGIC_ERROR;
         } else {
+            sr_dbg("receive_transfer: resubmit");
             resubmit_transfer(transfer);
         }
         return;
     } else {
+        sr_dbg("receive_transfer: empty_transfer_count=0");
         devc->empty_transfer_count = 0;
     }
 
@@ -958,24 +1031,24 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
                         *((const uint8_t*) cur_buf + i);
             if ((cur_sample & devc->trigger_mask[devc->trigger_stage]) ==
                     devc->trigger_value[devc->trigger_stage]) {
-                /* Match on this trigger stage. */
+                // Match on this trigger stage.
                 devc->trigger_buffer[devc->trigger_stage] = cur_sample;
                 devc->trigger_stage++;
                 if (devc->trigger_stage == NUM_TRIGGER_STAGES ||
                         devc->trigger_mask[devc->trigger_stage] == 0) {
-                    /* Match on all trigger stages, we're done. */
+                    // Match on all trigger stages, we're done.
                     trigger_offset = i + 1;
                     /*
-                             * TODO: Send pre-trigger buffer to session bus.
-                             * Tell the frontend we hit the trigger here.
-                             */
+                     * TODO: Send pre-trigger buffer to session bus.
+                     * Tell the frontend we hit the trigger here.
+                     */
                     packet.type = SR_DF_TRIGGER;
                     packet.payload = NULL;
                     sr_session_send(devc->cb_data, &packet);
                     /*
-                             * Send the samples that triggered it,
-                             * since we're skipping past them.
-                             */
+                     * Send the samples that triggered it,
+                     * since we're skipping past them.
+                     */
                     packet.type = SR_DF_LOGIC;
                     packet.payload = &logic;
                     logic.unitsize = sizeof (*devc->trigger_buffer);
@@ -987,16 +1060,16 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
                 }
             } else if (devc->trigger_stage > 0) {
                 /*
-                         * We had a match before, but not in the next sample. However, we may
-                         * have a match on this stage in the next bit -- trigger on 0001 will
-                         * fail on seeing 00001, so we need to go back to stage 0 -- but at
-                         * the next sample from the one that matched originally, which the
-                         * counter increment at the end of the loop takes care of.
-                         */
+                 * We had a match before, but not in the next sample. However, we may
+                 * have a match on this stage in the next bit -- trigger on 0001 will
+                 * fail on seeing 00001, so we need to go back to stage 0 -- but at
+                 * the next sample from the one that matched originally, which the
+                 * counter increment at the end of the loop takes care of.
+                    */
                 i -= devc->trigger_stage;
                 if (i < -1)
-                    i = -1; /* Oops, went back past this buffer. */
-                /* Reset trigger stage. */
+                    i = -1; // Oops, went back past this buffer.
+                // Reset trigger stage.
                 devc->trigger_stage = 0;
             }
         }
@@ -1010,7 +1083,7 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
         logic.unitsize = sample_width;
         logic.data = cur_buf + trigger_offset_bytes;
         if ((devc->sample_limit && devc->sample_count < (int64_t)devc->sample_limit)) {
-            const uint64_t remain_length= (devc->sample_limit - devc->sample_count) * sample_width;
+            const uint64_t remain_length = (devc->sample_limit - devc->sample_count) * sample_width;
             logic.length = min(logic.length, remain_length);
             // send data to session bus
             sr_session_send(devc->cb_data, &packet);

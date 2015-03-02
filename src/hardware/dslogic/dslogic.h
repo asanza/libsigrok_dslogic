@@ -162,7 +162,7 @@ SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage
 SR_PRIV voltage_range dslogic_get_voltage_threshold(const struct sr_dev_inst* sdi);
 SR_PRIV dev_mode dslogic_get_device_mode(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value);
-SR_PRIV int dslogic_set_sample_rate(const struct sr_dev_inst* sdi, uint64_t samplerate);
+SR_PRIV int dslogic_set_samplerate(const struct sr_dev_inst* sdi, uint64_t samplerate);
 SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
 SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi);
@@ -173,4 +173,7 @@ SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
                                      sr_receive_data_callback receive_data);
 SR_PRIV int dslogic_get_sample_count(const struct sr_dev_inst* sdi);
 SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide);
+SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi);
 #endif
