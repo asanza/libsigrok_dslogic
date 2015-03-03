@@ -154,7 +154,7 @@ static int set_fpga_setting(const struct sr_dev_inst *sdi) {
     usb = sdi->conn;
     hdl = usb->devhdl;
 
-    dslogic_fpga_set_mode(setting);
+    dslogic_fpga_set_mode(setting, devc->device_mode);
     dslogic_fpga_set_samplerate(setting,devc->current_samplerate, devc->sample_limit);
     dslogic_fpga_set_trigger(setting);
     int setting_size = dslogic_get_fpga_setting_size();
