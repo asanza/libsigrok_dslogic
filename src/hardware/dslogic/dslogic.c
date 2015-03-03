@@ -141,7 +141,7 @@ SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi) {
     }
 }
 
-SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi) {
+static int set_fpga_setting(const struct sr_dev_inst *sdi) {
     struct dev_context *devc;
     struct sr_usb_dev_inst *usb;
     struct libusb_device_handle *hdl;
@@ -910,7 +910,7 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
     if ((ret = command_fpga_setting(usb->devhdl, dslogic_get_fpga_setting_size() / sizeof (uint16_t))) != SR_OK) {
         sr_err("Send FPGA setting command failed!");
     } else {
-        if ((ret = fpga_setting(sdi)) != SR_OK) {
+        if ((ret = set_fpga_setting(sdi)) != SR_OK) {
             sr_err("Configure FPGA failed!");
             abort_acquisition(sdi);
             return ret;

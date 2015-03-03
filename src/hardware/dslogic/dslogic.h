@@ -78,7 +78,6 @@ static const dslogic_profile supported_fx2[3] = {
 };
 
 struct dev_context;
-SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi);
 SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename);
 SR_PRIV gboolean check_conf_profile(libusb_device *dev);
 SR_PRIV int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status);
