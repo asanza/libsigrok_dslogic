@@ -177,15 +177,13 @@ static int receive_data(int fd, int revents, void *cb_data) {
 
 static int configure_probes(const struct sr_dev_inst *sdi) {
 	printf("configure_probes\n");
-	struct dev_context *devc;
 	struct sr_channel *probe;
 	GSList *l;
-    int probe_bit;
-	int  i;
-    int stage = -1;
+    //int  i;
+    //int probe_bit;
+    //int stage = -1;
 	//char *tc;
 
-	devc = sdi->priv;
     dslogic_clear_trigger_stages(sdi);
 	for (l = sdi->channels; l; l = l->next) {
 		probe = (struct sr_channel *) l->data;
@@ -487,7 +485,7 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 		case SR_CONF_CLOCK_EDGE:
 			if(!sdi) return SR_ERR;
             //devc = sdi->priv;
-            int idx ;//= devc->clock_edge;
+            unsigned int idx = 0;//= devc->clock_edge;
 			if (idx >= G_N_ELEMENTS(signal_edge_names))
 				return SR_ERR_BUG;
 			*data = g_variant_new_string(signal_edge_names[idx]);
@@ -687,6 +685,7 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
     int ret = dslogic_send_fpga_settings(sdi, cb_data);
     if(ret!=SR_OK) return ret;
     ret = dslogic_set_usb_transfer(sdi, &dslogic_driver_info, receive_data);
+    return ret;
 }
 
 static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {

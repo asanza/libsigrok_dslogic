@@ -86,8 +86,6 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
 SR_PRIV void free_transfer(struct libusb_transfer *transfer)
 {
     struct sr_dev_inst *sdi = transfer->user_data;
-    unsigned int i;
-
     g_free(transfer->buffer);
     transfer->buffer = NULL;
     libusb_free_transfer(transfer);

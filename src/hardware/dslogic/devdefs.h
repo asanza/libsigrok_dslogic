@@ -7,6 +7,8 @@
 /* Software trigger implementation: positive values indicate trigger stage. */
 #define TRIGGER_FIRED          -1
 
+#include <stdint.h>
+
 typedef enum {
 	DSLOGIC_ERROR = -1,
 	DSLOGIC_INIT = 0,

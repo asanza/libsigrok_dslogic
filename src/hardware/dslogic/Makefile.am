@@ -9,4 +9,6 @@ helloworld_SOURCES = 	api.c \
 						protocol.c \
 						protocol.h \
 						transfer.c \
-						transfer.h 
+                                                transfer.h \
+                                                fpga.h \
+                                                fpga.c

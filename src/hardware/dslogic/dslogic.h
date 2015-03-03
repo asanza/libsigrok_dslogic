@@ -77,65 +77,6 @@ static const dslogic_profile supported_fx2[3] = {
 	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
 
-struct DSLogic_setting {
-	uint32_t sync;
-	uint16_t mode_header;                   // 0
-	uint16_t mode;
-	uint32_t divider_header;                // 1-2
-	uint32_t divider;
-	uint32_t count_header;                  // 3-4
-	uint32_t count;
-	uint32_t trig_pos_header;               // 5-6
-	uint32_t trig_pos;
-	uint16_t trig_glb_header;               // 7
-	uint16_t trig_glb;
-	uint32_t trig_adp_header;               // 10-11
-	uint32_t trig_adp;
-	uint32_t trig_sda_header;               // 12-13
-	uint32_t trig_sda;
-	uint32_t trig_mask0_header;              // 16
-	uint16_t trig_mask0[NUM_TRIGGER_STAGES];
-	uint32_t trig_mask1_header;              // 17
-	uint16_t trig_mask1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_mask2_header;              // 18
-	//uint16_t trig_mask2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_mask3_header;              // 19
-	//uint16_t trig_mask3[NUM_TRIGGER_STAGES];
-	uint32_t trig_value0_header;             // 20
-	uint16_t trig_value0[NUM_TRIGGER_STAGES];
-	uint32_t trig_value1_header;             // 21
-	uint16_t trig_value1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_value2_header;             // 22
-	//uint16_t trig_value2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_value3_header;             // 23
-	//uint16_t trig_value3[NUM_TRIGGER_STAGES];
-	uint32_t trig_edge0_header;              // 24
-	uint16_t trig_edge0[NUM_TRIGGER_STAGES];
-	uint32_t trig_edge1_header;              // 25
-	uint16_t trig_edge1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_edge2_header;              // 26
-	//uint16_t trig_edge2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_edge3_header;              // 27
-	//uint16_t trig_edge3[NUM_TRIGGER_STAGES];
-	uint32_t trig_count0_header;             // 28
-	uint16_t trig_count0[NUM_TRIGGER_STAGES];
-	uint32_t trig_count1_header;             // 29
-	uint16_t trig_count1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_count2_header;             // 30
-	//uint16_t trig_count2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_count3_header;             // 31
-	//uint16_t trig_count3[NUM_TRIGGER_STAGES];
-	uint32_t trig_logic0_header;             // 32
-	uint16_t trig_logic0[NUM_TRIGGER_STAGES];
-	uint32_t trig_logic1_header;             // 33
-	uint16_t trig_logic1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_logic2_header;             // 34
-	//uint16_t trig_logic2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_logic3_header;             // 35
-	//uint16_t trig_logic3[NUM_TRIGGER_STAGES];
-	uint32_t end_sync;
-};
-
 struct dev_context;
 SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi);
 SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename);
@@ -168,8 +109,8 @@ SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
 SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_set_capture_ratio(const struct sr_dev_inst* sdi, uint64_t ratio);
 SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi, void* cb_data);
-SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
-                                     struct sr_dev_driver * di,
+SR_PRIV int dslogic_set_usb_transfer(const struct sr_dev_inst* sdi,
+                                     const struct sr_dev_driver * di,
                                      sr_receive_data_callback receive_data);
 SR_PRIV int dslogic_get_sample_count(const struct sr_dev_inst* sdi);
 SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
@@ -182,5 +123,7 @@ SR_PRIV gboolean dslogic_sample_complete(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, int data_size);
 SR_PRIV void dslogic_set_error_status(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_clear_transfer(const struct sr_dev_inst* sdi, const struct libusb_transfer* transfer);
+SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi);
 
 #endif

@@ -217,7 +217,9 @@ if HW_DSLOGIC
 libsigrok_la_SOURCES += \
 	src/hardware/dslogic/api.c \
 	src/hardware/dslogic/protocol.c\
-	src/hardware/dslogic/protocol.h
+        src/hardware/dslogic/protocol.h \
+        src/hardware/dslogic/fpga.c \
+        src/hardware/dslogic/fpga.h
 endif
 if HW_FLUKE_DMM
 libsigrok_la_SOURCES += \

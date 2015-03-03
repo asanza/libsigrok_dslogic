@@ -32,6 +32,7 @@
 #include "libsigrok-internal.h"
 #include <math.h>
 #include "devdefs.h"
+#include "fpga.h"
 
 #ifndef _WIN32
 #undef min
@@ -144,134 +145,37 @@ SR_PRIV int fpga_setting(const struct sr_dev_inst *sdi) {
     struct dev_context *devc;
     struct sr_usb_dev_inst *usb;
     struct libusb_device_handle *hdl;
-    struct DSLogic_setting setting;
+    struct dslogic_fpga_setting* setting;
+    setting = dslogic_fpga_new_setting();
     int ret;
     int transferred;
-    int result;
-    int i;
 
     devc = sdi->priv;
     usb = sdi->conn;
     hdl = usb->devhdl;
 
-    setting.sync = 0xf5a5f5a5;
-    setting.mode_header = 0x0001;
-    setting.divider_header = 0x0102ffff;
-    setting.count_header = 0x0302ffff;
-    setting.trig_pos_header = 0x0502ffff;
-    setting.trig_glb_header = 0x0701;
-    setting.trig_adp_header = 0x0a02ffff;
-    setting.trig_sda_header = 0x0c02ffff;
-    setting.trig_mask0_header = 0x1010ffff;
-    setting.trig_mask1_header = 0x1110ffff;
-    //setting.trig_mask2_header = 0x1210ffff;
-    //setting.trig_mask3_header = 0x1310ffff;
-    setting.trig_value0_header = 0x1410ffff;
-    setting.trig_value1_header = 0x1510ffff;
-    //setting.trig_value2_header = 0x1610ffff;
-    //setting.trig_value3_header = 0x1710ffff;
-    setting.trig_edge0_header = 0x1810ffff;
-    setting.trig_edge1_header = 0x1910ffff;
-    //setting.trig_edge2_header = 0x1a10ffff;
-    //setting.trig_edge3_header = 0x1b10ffff;
-    setting.trig_count0_header = 0x1c10ffff;
-    setting.trig_count1_header = 0x1d10ffff;
-    //setting.trig_count2_header = 0x1e10ffff;
-    //setting.trig_count3_header = 0x1f10ffff;
-    setting.trig_logic0_header = 0x2010ffff;
-    setting.trig_logic1_header = 0x2110ffff;
-    //setting.trig_logic2_header = 0x2210ffff;
-    //setting.trig_logic3_header = 0x2310ffff;
-    setting.end_sync = 0xfa5afa5a;
-
-    //setting.mode = (test_mode ? 0x8000 : 0x0000) + trigger->trigger_en + (sdi->mode << 4);
-    setting.mode = 1<<15; //((devc->op_mode == SR_OP_INTERNAL_TEST) << 15);
-    setting.mode += 0<<14; //((devc->op_mode == SR_OP_EXTERNAL_TEST) << 14);
-    setting.mode += 0<<13; //((devc->op_mode == SR_OP_LOOPBACK_TEST) << 13);
-    setting.mode += 0; //trigger->trigger_en;
-    setting.mode += 0<<4; //((sdi->mode > 0) << 4); 0=logic, 1= dso; 2 = analog
-    setting.mode += ((devc->clock_source == CLOCK_EXT_CLK) << 1);
-    setting.mode += (devc->clock_edge << 1);
-    setting.mode += (((devc->current_samplerate == SR_MHZ(200) && 1/*sdi->mode != DSO*/) || (0/*sdi->mode == ANALOG*/)) << 5);
-    setting.mode += ((devc->current_samplerate == SR_MHZ(400)) << 6);
-    setting.mode += 0<<7; //((sdi->mode == ANALOG) << 7);
-    setting.mode += 0<<8; //((devc->filter == SR_FILTER_1T) << 8); no filter
-    setting.divider = (uint32_t) ceil(SR_MHZ(100) * 1.0 / devc->current_samplerate);
-    setting.count = (uint32_t) (devc->sample_limit);
-    setting.trig_pos = (uint32_t)(/*trigger->trigger_pos*/1 / 100.0f * devc->sample_limit); //danot sure about it.
-    setting.trig_glb = 0; //trigger->trigger_stages; //no trigger stages
-    setting.trig_adp = setting.count - setting.trig_pos - 1;
-    setting.trig_sda = 0x0;
-    if (1) {//trigger->trigger_mode == SIMPLE_TRIGGER) {
-        setting.trig_mask0[0] = 0; //ds_trigger_get_mask0(TriggerStages);
-        setting.trig_mask1[0] = 0; //ds_trigger_get_mask1(TriggerStages);
-
-        setting.trig_value0[0] = 0; //ds_trigger_get_value0(TriggerStages);
-        setting.trig_value1[0] = 0; //ds_trigger_get_value1(TriggerStages);
-
-        setting.trig_edge0[0] = 0; //ds_trigger_get_edge0(TriggerStages);
-        setting.trig_edge1[0] = 0; //ds_trigger_get_edge1(TriggerStages);
-
-        setting.trig_count0[0] = 0; //trigger->trigger0_count[TriggerStages];
-        setting.trig_count1[0] = 0; // trigger->trigger1_count[TriggerStages];
-
-        setting.trig_logic0[0] = 0; //(trigger->trigger_logic[TriggerStages] << 1) + trigger->trigger0_inv[TriggerStages];
-        setting.trig_logic1[0] = 0; //(trigger->trigger_logic[TriggerStages] << 1) + trigger->trigger1_inv[TriggerStages];
-
-        for (i = 1; i < NUM_TRIGGER_STAGES; i++) {
-            setting.trig_mask0[i] = 0xff;
-            setting.trig_mask1[i] = 0xff;
-
-            setting.trig_value0[i] = 0;
-            setting.trig_value1[i] = 0;
-
-            setting.trig_edge0[i] = 0;
-            setting.trig_edge1[i] = 0;
-
-            setting.trig_count0[i] = 0;
-            setting.trig_count1[i] = 0;
-
-            setting.trig_logic0[i] = 2;
-            setting.trig_logic1[i] = 2;
-        }
-    } else {/*
-        for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
-            setting.trig_mask0[i] = ds_trigger_get_mask0(i);
-            setting.trig_mask1[i] = ds_trigger_get_mask1(i);
-
-            setting.trig_value0[i] = ds_trigger_get_value0(i);
-            setting.trig_value1[i] = ds_trigger_get_value1(i);
-
-            setting.trig_edge0[i] = ds_trigger_get_edge0(i);
-            setting.trig_edge1[i] = ds_trigger_get_edge1(i);
-
-            setting.trig_count0[i] = trigger->trigger0_count[i];
-            setting.trig_count1[i] = trigger->trigger1_count[i];
-
-            setting.trig_logic0[i] = (trigger->trigger_logic[i] << 1) + trigger->trigger0_inv[i];
-            setting.trig_logic1[i] = (trigger->trigger_logic[i] << 1) + trigger->trigger1_inv[i];
-        }*/
-    }
-
-    result = SR_OK;
+    dslogic_fpga_set_mode(setting);
+    dslogic_fpga_set_samplerate(setting,devc->current_samplerate, devc->sample_limit);
+    dslogic_fpga_set_trigger(setting);
+    int setting_size = dslogic_get_fpga_setting_size();
     ret = libusb_bulk_transfer(hdl, 2 | LIBUSB_ENDPOINT_OUT,
-                               (unsigned char*)&setting, sizeof (struct DSLogic_setting),
+                               (unsigned char*)setting, setting_size,
                                &transferred, 1000);
-
     if (ret < 0) {
         sr_err("Unable to setting FPGA of DSLogic: %s.",
                libusb_error_name(ret));
-        result = SR_ERR;
-    } else if (transferred != sizeof (struct DSLogic_setting)) {
+        ret = SR_ERR;
+    } else if (transferred != setting_size) {
         sr_err("Setting FPGA error: expacted transfer size %d; actually %d",
-               sizeof (struct DSLogic_setting), transferred);
-        result = SR_ERR;
+               setting_size, transferred);
+        ret = SR_ERR;
     }
 
-    if (result == SR_OK)
+    if (ret == SR_OK)
         sr_info("FPGA setting done");
 
-    return result;
+    dslogic_fpga_setting_free(setting);
+    return ret;
 }
 
 SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename) {
@@ -1003,7 +907,7 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
         sr_info("Previous DSLogic acquisition stopped!");
     }
     /* Setting FPGA before acquisition start*/
-    if ((ret = command_fpga_setting(usb->devhdl, sizeof (struct DSLogic_setting) / sizeof (uint16_t))) != SR_OK) {
+    if ((ret = command_fpga_setting(usb->devhdl, dslogic_get_fpga_setting_size() / sizeof (uint16_t))) != SR_OK) {
         sr_err("Send FPGA setting command failed!");
     } else {
         if ((ret = fpga_setting(sdi)) != SR_OK) {
@@ -1015,8 +919,8 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
     return ret;
 }
 
-SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
-                                     struct sr_dev_driver * di,
+SR_PRIV int dslogic_set_usb_transfer(const struct sr_dev_inst* sdi,
+                                     const struct sr_dev_driver * di,
                                      sr_receive_data_callback receive_data){
     g_assert(sdi);
     g_assert(di);
@@ -1064,6 +968,7 @@ SR_PRIV int dslogic_set_usb_transfer(struct sr_dev_inst* sdi,
     // Send header packet to the session bus.
     //std_session_send_df_header(cb_data, LOG_PREFIX);
     std_session_send_df_header(sdi, LOG_PREFIX);
+    return SR_OK;
 }
 
 SR_PRIV void dslogic_set_error_status(const struct sr_dev_inst* sdi){
