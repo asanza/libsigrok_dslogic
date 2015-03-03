@@ -176,4 +176,11 @@ SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide);
 SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_get_sample_wide(const struct sr_dev_inst* sdi);
+SR_PRIV gboolean dslogic_increase_empty_sample_count(const struct sr_dev_inst* sdi);
+SR_PRIV gboolean dslogic_sample_complete(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, int data_size);
+SR_PRIV void dslogic_set_error_status(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_clear_transfer(const struct sr_dev_inst* sdi, const struct libusb_transfer* transfer);
+
 #endif
