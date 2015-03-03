@@ -167,7 +167,7 @@ static int receive_data(int fd, int revents, void *cb_data) {
             dslogic_get_device_status(sdi) == DSLOGIC_STOP ||
             dslogic_get_device_status(sdi) == DSLOGIC_ERROR)) {
         sr_info("%s: Stopping", __func__);
-        abort_acquisition(sdi);
+        dslogic_abort_acquisition(sdi);
     }
     tv.tv_sec = tv.tv_usec = 0;
     libusb_handle_events_timeout(drvc->sr_ctx->libusb_ctx, &tv);
@@ -354,7 +354,7 @@ static GSList *scan(GSList *options) {
 			if (ezusb_upload_firmware(devlist[i], USB_CONFIGURATION,
 			                          firmware) == SR_OK)
 				/* Store when this device's FW was updated. */
-                dslogic_set_firmware_updated(devc);
+                dslogic_set_firmware_updated(sdi);
 			else
 				sr_err("Firmware upload failed for "
 				       "device %d.", devcnt);
@@ -476,10 +476,7 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
             *data = g_variant_new_uint64(dslogic_get_sample_rate(sdi));
             break;
 		case SR_CONF_EXTERNAL_CLOCK:
-			if(!sdi) return SR_ERR;
-//			devc = sdi->priv;
-            //*data = g_variant_new_boolean(devc->clock_source
-                //		== CLOCK_EXT_CLK);
+            *data = g_variant_new_boolean(dslogic_get_clock_source(sdi) == CLOCK_EXT_CLK);
 			break;
 		case SR_CONF_CLOCK_EDGE:
 			if(!sdi) return SR_ERR;

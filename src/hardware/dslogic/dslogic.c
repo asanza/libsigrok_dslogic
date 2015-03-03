@@ -88,6 +88,15 @@ struct dev_context {
     uint8_t trigger_source;
 };
 
+static int dev_transfer_start(const struct sr_dev_inst *sdi);
+static void finish_acquisition(const struct sr_dev_inst *sdi);
+static unsigned int get_number_of_transfers(struct dev_context *devc);
+static unsigned int to_bytes_per_ms(struct dev_context *devc);
+static size_t get_buffer_size(struct dev_context *devc);
+static void dslogic_receive_transfer(struct libusb_transfer *transfer);
+
+static gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int vid, int pid);
+
 static void finish_acquisition(const struct sr_dev_inst *sdi) {
     struct dev_context *devc = sdi->priv;
     struct sr_datafeed_packet packet;
@@ -103,7 +112,7 @@ static void finish_acquisition(const struct sr_dev_inst *sdi) {
     usb_source_remove(sdi->session, devc->ctx);
 }
 
-SR_PRIV void dslogic_clear_transfer(const struct sr_dev_inst* sdi, const struct libusb_transfer* transfer){
+static void clear_transfer(const struct sr_dev_inst* sdi, const struct libusb_transfer* transfer){
     g_assert(sdi);
     g_assert(transfer);
     unsigned int i;
@@ -114,13 +123,21 @@ SR_PRIV void dslogic_clear_transfer(const struct sr_dev_inst* sdi, const struct 
             break;
         }
     }
-
     devc->submitted_transfers--;
     if (devc->submitted_transfers == 0 && devc->status != DSLOGIC_TRIGGERED)
         finish_acquisition(sdi);
 }
 
-SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi) {
+static void free_transfer(struct libusb_transfer *transfer)
+{
+    struct sr_dev_inst *sdi = transfer->user_data;
+    g_free(transfer->buffer);
+    transfer->buffer = NULL;
+    libusb_free_transfer(transfer);
+    clear_transfer(sdi, transfer);
+}
+
+SR_PRIV void dslogic_abort_acquisition(const struct sr_dev_inst* sdi) {
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
     int i, ret;
@@ -277,25 +294,7 @@ SR_PRIV gboolean dslogic_check_conf_profile(libusb_device *dev) {
     return ret;
 }
 
-static int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status) {
-    printf("get_status\n");
-    if (sdi) {
-        struct sr_usb_dev_inst *usb;
-        int ret;
-        usb = sdi->conn;
-        ret = command_get_status(usb->devhdl, status);
-        if (ret != SR_OK) {
-            sr_err("Device don't exist!");
-            return SR_ERR;
-        } else {
-            return SR_OK;
-        }
-    } else {
-        return SR_ERR;
-    }
-}
-
-SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer) {
+static void receive_trigger_pos(struct libusb_transfer *transfer) {
     struct sr_dev_inst *sdi = transfer->user_data;
     struct dev_context *devc = sdi->priv;
     struct sr_datafeed_packet packet;
@@ -342,7 +341,7 @@ SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer) {
     }
 }
 
-SR_PRIV unsigned int get_timeout(struct dev_context *devc) {
+static unsigned int get_timeout(struct dev_context *devc) {
     (void)devc;
     //size_t total_size;
     //unsigned int timeout;
@@ -353,12 +352,11 @@ SR_PRIV unsigned int get_timeout(struct dev_context *devc) {
     return 1000;
 }
 
-SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi) {
+static int dev_transfer_start(const struct sr_dev_inst *sdi) {
     struct dev_context *devc;
     struct sr_usb_dev_inst *usb;
     struct libusb_transfer *transfer;
     unsigned int i;
-    unsigned int timeout;
     unsigned int num_transfers;
     int ret;
     unsigned char *buf;
@@ -367,7 +365,6 @@ SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi) {
     devc = sdi->priv;
     usb = sdi->conn;
 
-    timeout = get_timeout(devc);
     num_transfers = get_number_of_transfers(devc);
     size = get_buffer_size(devc);
     devc->submitted_transfers = 0;
@@ -387,13 +384,13 @@ SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi) {
         transfer = libusb_alloc_transfer(0);
         libusb_fill_bulk_transfer(transfer, usb->devhdl,
                                   6 | LIBUSB_ENDPOINT_IN, buf, size,
-                                  dslogic_receive_transfer, sdi, 0);
+                                  dslogic_receive_transfer, (void*)sdi, 0);
         if ((ret = libusb_submit_transfer(transfer)) != 0) {
             sr_err("Failed to submit transfer: %s.",
                    libusb_error_name(ret));
             libusb_free_transfer(transfer);
             g_free(buf);
-            abort_acquisition(sdi);
+            dslogic_abort_acquisition(sdi);
             return SR_ERR;
         }
         devc->transfers[i] = transfer;
@@ -405,7 +402,7 @@ SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi) {
     return SR_OK;
 }
 
-SR_PRIV unsigned int get_number_of_transfers(struct dev_context *devc) {
+static unsigned int get_number_of_transfers(struct dev_context *devc) {
     unsigned int n;
     /* Total buffer size should be able to hold about 100ms of data. */
     n = 100 * to_bytes_per_ms(devc) / get_buffer_size(devc);
@@ -416,14 +413,14 @@ SR_PRIV unsigned int get_number_of_transfers(struct dev_context *devc) {
     return n;
 }
 
-SR_PRIV unsigned int to_bytes_per_ms(struct dev_context *devc) {
+static unsigned int to_bytes_per_ms(struct dev_context *devc) {
     if (devc->current_samplerate > SR_MHZ(100))
         return SR_MHZ(100) / 1000 * (devc->sample_wide ? 2 : 1);
     else
         return devc->current_samplerate / 1000 * (devc->sample_wide ? 2 : 1);
 }
 
-SR_PRIV size_t get_buffer_size(struct dev_context *devc) {
+static size_t get_buffer_size(struct dev_context *devc) {
     size_t s;
 
     /*
@@ -434,7 +431,7 @@ SR_PRIV size_t get_buffer_size(struct dev_context *devc) {
     return (s + 511) & ~511;
 }
 
-static int DSLogic_dev_open(struct sr_dev_inst *sdi, struct sr_dev_driver* di) {
+static int open_device(struct sr_dev_inst *sdi, const struct sr_dev_driver* di) {
     libusb_device **devlist;
     struct sr_usb_dev_inst *usb;
     struct libusb_device_descriptor des;
@@ -559,7 +556,7 @@ SR_PRIV struct dev_context *dslogic_dev_new(void) {
 }
 
 
-SR_PRIV gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int vid, int pid){
+static gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int vid, int pid){
     return !(vid != devc->profile->vid
             || pid != devc->profile->pid);
 }
@@ -568,11 +565,19 @@ SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile*
     devc->profile = prof;
 }
 
-SR_PRIV void dslogic_set_firmware_updated(struct dev_context* devc){
+SR_PRIV void dslogic_set_firmware_updated(const struct sr_dev_inst* sdi){
+    g_boolean(sdi);
+    struct dev_context* devc = sdi->priv;
     devc->fw_updated = g_get_monotonic_time();
 }
 
-SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di){
+SR_PRIV clk_source dslogic_get_clock_source(const struct sr_dev_inst* sdi){
+    g_boolean(sdi);
+    struct dev_context* devc = sdi->priv;
+    return devc->clock_source;
+}
+
+SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, const struct sr_dev_driver* di){
     struct dev_context* devc = sdi->priv;
     uint64_t timediff_us, timediff_ms, ret;
     if (devc->fw_updated > 0) {
@@ -581,7 +586,7 @@ SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di){
         g_usleep(300 * 1000);
         timediff_ms = 0;
         while (timediff_ms < MAX_RENUM_DELAY_MS) {
-            if ((ret = DSLogic_dev_open(sdi, di)) == SR_OK)
+            if ((ret = open_device(sdi, di)) == SR_OK)
                 break;
             g_usleep(100 * 1000);
 
@@ -596,12 +601,12 @@ SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di){
         sr_info("Device came back after %" PRIi64 "ms.", timediff_ms);
     } else {
         sr_info("Firmware upload was not needed.");
-        ret = DSLogic_dev_open(sdi,di);
+        ret = open_device(sdi,di);
     }
     return ret;
 }
 
-SR_PRIV int dslogic_program_fpga(struct sr_dev_inst* sdi){
+SR_PRIV int dslogic_program_fpga(const struct sr_dev_inst* sdi){
     struct dev_context* devc = sdi->priv;
     struct sr_usb_dev_inst* usb = sdi->conn;
     int ret;
@@ -655,9 +660,9 @@ SR_PRIV voltage_range dslogic_get_voltage_threshold(const struct sr_dev_inst* sd
 SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
-    int ret;
+    int ret = SR_OK;
     devc->voltage_threshold = value;
-    dslogic_program_fpga(sdi);
+    ret = dslogic_program_fpga(sdi);
     return ret;
 }
 
@@ -696,7 +701,7 @@ SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi){
     devc = sdi->priv;
     devc->status = DSLOGIC_STOP;
     sr_info("%s: Stopping", __func__);
-    abort_acquisition(sdi);
+    dslogic_abort_acquisition(sdi);
 }
 
 SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi){
@@ -888,7 +893,7 @@ SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
     devc->submitted_transfers = 0;
     if ((ret = command_stop_acquisition(usb->devhdl)) != SR_OK) {
         sr_err("Stop DSLogic acquisition failed!");
-        abort_acquisition(sdi);
+        dslogic_abort_acquisition(sdi);
         return ret;
     } else {
         sr_info("Previous DSLogic acquisition stopped!");
@@ -900,14 +905,14 @@ SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
     } else {
         if ((ret = set_fpga_setting(sdi)) != SR_OK) {
             sr_err("Configure FPGA failed!");
-            abort_acquisition(sdi);
+            dslogic_abort_acquisition(sdi);
             return ret;
         }
     }
     if(ret!=SR_OK) return ret;
     if ((ret = command_start_acquisition(usb->devhdl,devc->current_samplerate,
                                          devc->sample_wide, TRUE)) != SR_OK) {
-        abort_acquisition(sdi);
+        dslogic_abort_acquisition(sdi);
         return ret;
     }
     devc->transfers = g_try_malloc0(sizeof (*devc->transfers));
@@ -932,7 +937,7 @@ SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
                libusb_error_name(ret));
         libusb_free_transfer(transfer);
         g_free(trigger_pos);
-        abort_acquisition(sdi);
+        dslogic_abort_acquisition(sdi);
         return SR_ERR;
     }
     devc->ctx = drvc->sr_ctx;
@@ -946,17 +951,12 @@ SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
     return SR_OK;
 }
 
-SR_PRIV void dslogic_set_error_status(const struct sr_dev_inst* sdi){
+static void dslogic_set_error_status(const struct sr_dev_inst* sdi){
       struct dev_context* devc = sdi->priv;
       devc->status = DSLOGIC_ERROR;
 }
 
-#ifndef _WIN32
-#undef min
-#define min(a,b) ((a)<(b)?(a):(b))
-#endif
-
-SR_PRIV void dslogic_resubmit_transfer(struct libusb_transfer *transfer) {
+static void dslogic_resubmit_transfer(struct libusb_transfer *transfer) {
     int ret;
 
     if ((ret = libusb_submit_transfer(transfer)) == LIBUSB_SUCCESS)
@@ -968,7 +968,7 @@ SR_PRIV void dslogic_resubmit_transfer(struct libusb_transfer *transfer) {
     sr_err("%s: %s", __func__, libusb_error_name(ret));
 }
 
-SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
+static void dslogic_receive_transfer(struct libusb_transfer *transfer) {
     gboolean packet_has_error = FALSE;
     struct sr_dev_inst* sdi = transfer->user_data;
     uint8_t *cur_buf;
@@ -1028,13 +1028,4 @@ SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
         free_transfer(transfer);
     else
         dslogic_resubmit_transfer(transfer);
-}
-
-SR_PRIV void free_transfer(struct libusb_transfer *transfer)
-{
-    struct sr_dev_inst *sdi = transfer->user_data;
-    g_free(transfer->buffer);
-    transfer->buffer = NULL;
-    libusb_free_transfer(transfer);
-    dslogic_clear_transfer(sdi, transfer);
 }

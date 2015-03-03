@@ -79,26 +79,16 @@ static const dslogic_profile supported_fx2[3] = {
 #define NUM_SIMUL_TRANSFERS	64
 #define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
 
-SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer);
-SR_PRIV void dslogic_resubmit_transfer(struct libusb_transfer *transfer);
-SR_PRIV void free_transfer(struct libusb_transfer *transfer);
-
 struct dev_context;
 SR_PRIV gboolean dslogic_check_conf_profile(libusb_device *dev);
-SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer);
-SR_PRIV unsigned int get_timeout(struct dev_context *devc);
-SR_PRIV unsigned int get_number_of_transfers(struct dev_context *devc);
-SR_PRIV unsigned int to_bytes_per_ms(struct dev_context *devc);
-SR_PRIV size_t get_buffer_size(struct dev_context *devc);
-SR_PRIV int dev_transfer_start(const struct sr_dev_inst *sdi);
 
 // NEW_API
 SR_PRIV struct dev_context *dslogic_dev_new(void);
-SR_PRIV gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int vid, int pid);
+SR_PRIV clk_source dslogic_get_clock_source(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile* prof);
-SR_PRIV void dslogic_set_firmware_updated(struct dev_context* devc);
-SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di);
-SR_PRIV int dslogic_program_fpga(struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_firmware_updated(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, const struct sr_dev_driver* di);
+SR_PRIV int dslogic_program_fpga(const struct sr_dev_inst* sdi);
 SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value);
 SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value);
@@ -118,13 +108,11 @@ SR_PRIV int dslogic_get_sample_count(const struct sr_dev_inst* sdi);
 SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide);
-SR_PRIV void abort_acquisition(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_abort_acquisition(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_get_sample_wide(const struct sr_dev_inst* sdi);
 SR_PRIV gboolean dslogic_increase_empty_sample_count(const struct sr_dev_inst* sdi);
 SR_PRIV gboolean dslogic_sample_complete(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, int data_size);
-SR_PRIV void dslogic_set_error_status(const struct sr_dev_inst* sdi);
-SR_PRIV void dslogic_clear_transfer(const struct sr_dev_inst* sdi, const struct libusb_transfer* transfer);
 SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi);
 
