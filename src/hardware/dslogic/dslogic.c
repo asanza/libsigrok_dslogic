@@ -25,7 +25,6 @@
 #include <libusb.h>
 #include "dslogic.h"
 #include "protocol.h"
-#include "transfer.h"
 #include <errno.h>
 #include <string.h>
 #include "libsigrok.h"
@@ -74,6 +73,7 @@ struct dev_context {
     /* wide of sample. TRUE = 16 channels (2 bytes),
      * FALSE = 8 channels */
     gboolean sample_wide;
+    gboolean trigger_enabled;
 
     /*sigrok context*/
     struct sr_context* ctx;
@@ -156,7 +156,8 @@ static int set_fpga_setting(const struct sr_dev_inst *sdi) {
 
     dslogic_fpga_set_mode(setting, devc->device_mode);
     dslogic_fpga_set_samplerate(setting,devc->current_samplerate, devc->sample_limit);
-    dslogic_fpga_set_trigger(setting);
+    dslogic_fpga_set_trigger(setting, (uint32_t)(devc->capture_ratio/ 100.0f * devc->sample_limit),
+                             devc->trigger_enabled);
     int setting_size = dslogic_get_fpga_setting_size();
     ret = libusb_bulk_transfer(hdl, 2 | LIBUSB_ENDPOINT_OUT,
                                (unsigned char*)setting, setting_size,
@@ -178,7 +179,7 @@ static int set_fpga_setting(const struct sr_dev_inst *sdi) {
     return ret;
 }
 
-SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename) {
+static int fpga_config(struct libusb_device_handle *hdl, const char *filename) {
     FILE *fw;
     int offset, chunksize, ret, result;
     unsigned char *buf;
@@ -239,7 +240,7 @@ SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename) 
  * @return TRUE if the device's configuration profile match DSLogic
  *         configuration, FALSE otherwise.
  */
-SR_PRIV gboolean check_conf_profile(libusb_device *dev) {
+SR_PRIV gboolean dslogic_check_conf_profile(libusb_device *dev) {
     struct libusb_device_descriptor des;
     struct libusb_device_handle *hdl;
     gboolean ret;
@@ -276,34 +277,13 @@ SR_PRIV gboolean check_conf_profile(libusb_device *dev) {
     return ret;
 }
 
-SR_PRIV int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status) {
+static int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status) {
     printf("get_status\n");
     if (sdi) {
         struct sr_usb_dev_inst *usb;
         int ret;
-
         usb = sdi->conn;
         ret = command_get_status(usb->devhdl, status);
-        if (ret != SR_OK) {
-            sr_err("Device don't exist!");
-            return SR_ERR;
-        } else {
-            return SR_OK;
-        }
-    } else {
-        return SR_ERR;
-    }
-}
-
-SR_PRIV int dev_test(struct sr_dev_inst *sdi) {
-    printf("set_test\n");
-    if (sdi) {
-        struct sr_usb_dev_inst *usb;
-        struct version_info vi;
-        int ret;
-
-        usb = sdi->conn;
-        ret = command_get_fw_version(usb->devhdl, &vi);
         if (ret != SR_OK) {
             sr_err("Device don't exist!");
             return SR_ERR;
@@ -566,14 +546,15 @@ SR_PRIV struct dev_context *dslogic_dev_new(void) {
     devc->fw_updated = 0;
     devc->current_samplerate = DEFAULT_SAMPLERATE;
     devc->sample_limit = DEFAULT_SAMPLELIMIT;
-    devc->sample_wide = 1; //TODO: autoadjust sample wide
+    devc->sample_wide = 1;
     devc->clock_source = CLOCK_INTERNAL;
-    devc->clock_edge = 0;
+    devc->clock_edge = RISING;
     devc->capture_ratio = 0;
     devc->voltage_threshold = VOLTAGE_RANGE_18_33_V;
     devc->filter = FALSE;
     devc->trigger_source = 0 ;
     devc->device_mode = NORMAL_MODE;
+    devc->trigger_enabled = FALSE;
     return devc;
 }
 
@@ -620,7 +601,7 @@ SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di){
     return ret;
 }
 
-SR_PRIV int dslogic_configure_fpga(struct sr_dev_inst* sdi){
+SR_PRIV int dslogic_program_fpga(struct sr_dev_inst* sdi){
     struct dev_context* devc = sdi->priv;
     struct sr_usb_dev_inst* usb = sdi->conn;
     int ret;
@@ -676,7 +657,7 @@ SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage
     struct dev_context* devc = sdi->priv;
     int ret;
     devc->voltage_threshold = value;
-    dslogic_configure_fpga(sdi);
+    dslogic_program_fpga(sdi);
     return ret;
 }
 
@@ -886,12 +867,18 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
     }
 }
 
-SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
-                                       void* cb_data){
+SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
+                                     const struct sr_dev_driver * di,
+                                     sr_receive_data_callback receive_data,
+                                      void* cb_data){
     g_assert(sdi);
+    g_assert(di);
     struct dev_context* devc = sdi->priv;
+    struct drv_context* drvc = di->priv;
     struct sr_usb_dev_inst* usb = sdi->conn;
-    int ret = SR_OK;
+    struct ds_trigger_pos* trigger_pos;
+    struct libusb_transfer *transfer;
+    int ret;
     /* Stop Previous GPIF acquisition */
     devc->cb_data = cb_data;
     devc->sample_count = 0;
@@ -907,7 +894,8 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
         sr_info("Previous DSLogic acquisition stopped!");
     }
     /* Setting FPGA before acquisition start*/
-    if ((ret = command_fpga_setting(usb->devhdl, dslogic_get_fpga_setting_size() / sizeof (uint16_t))) != SR_OK) {
+    if ((ret = command_fpga_setting(usb->devhdl,
+                    dslogic_get_fpga_setting_size() / sizeof (uint16_t))) != SR_OK) {
         sr_err("Send FPGA setting command failed!");
     } else {
         if ((ret = set_fpga_setting(sdi)) != SR_OK) {
@@ -916,20 +904,7 @@ SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi,
             return ret;
         }
     }
-    return ret;
-}
-
-SR_PRIV int dslogic_set_usb_transfer(const struct sr_dev_inst* sdi,
-                                     const struct sr_dev_driver * di,
-                                     sr_receive_data_callback receive_data){
-    g_assert(sdi);
-    g_assert(di);
-    struct dev_context* devc = sdi->priv;
-    struct drv_context* drvc = di->priv;
-    struct sr_usb_dev_inst* usb = sdi->conn;
-    struct ds_trigger_pos* trigger_pos;
-    struct libusb_transfer *transfer;
-    int ret;
+    if(ret!=SR_OK) return ret;
     if ((ret = command_start_acquisition(usb->devhdl,devc->current_samplerate,
                                          devc->sample_wide, TRUE)) != SR_OK) {
         abort_acquisition(sdi);
@@ -951,7 +926,7 @@ SR_PRIV int dslogic_set_usb_transfer(const struct sr_dev_inst* sdi,
                               6 | LIBUSB_ENDPOINT_IN,
                               (unsigned char*)trigger_pos,
                               sizeof (struct ds_trigger_pos),
-                              receive_trigger_pos, sdi, 0);
+                              receive_trigger_pos, (void*)sdi, 0);
     if ((ret = libusb_submit_transfer(transfer)) != 0) {
         sr_err("Failed to submit trigger_pos transfer: %s.",
                libusb_error_name(ret));
@@ -974,4 +949,92 @@ SR_PRIV int dslogic_set_usb_transfer(const struct sr_dev_inst* sdi,
 SR_PRIV void dslogic_set_error_status(const struct sr_dev_inst* sdi){
       struct dev_context* devc = sdi->priv;
       devc->status = DSLOGIC_ERROR;
+}
+
+#ifndef _WIN32
+#undef min
+#define min(a,b) ((a)<(b)?(a):(b))
+#endif
+
+SR_PRIV void dslogic_resubmit_transfer(struct libusb_transfer *transfer) {
+    int ret;
+
+    if ((ret = libusb_submit_transfer(transfer)) == LIBUSB_SUCCESS)
+        return;
+
+    free_transfer(transfer);
+    /* TODO: Stop session? */
+
+    sr_err("%s: %s", __func__, libusb_error_name(ret));
+}
+
+SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer) {
+    gboolean packet_has_error = FALSE;
+    struct sr_dev_inst* sdi = transfer->user_data;
+    uint8_t *cur_buf;
+    GTimeVal cur_time;
+    g_get_current_time(&cur_time);
+
+    sr_dbg("receive_transfer: current time %d sec %d usec",
+           cur_time.tv_sec, cur_time.tv_usec);
+    /*
+     * If acquisition has already ended, just free any queued up
+     * transfer that come in.
+     */
+    if (dslogic_get_sample_count(sdi) == -1) {
+        sr_dbg("receive_data: already ended");
+        free_transfer(transfer);
+        return;
+    }
+
+    sr_dbg("receive_transfer: status %d; timeout %d; received %d bytes.",
+           transfer->status, transfer->timeout, transfer->actual_length);
+
+    /* Save incoming transfer before reusing the transfer struct. */
+    cur_buf = transfer->buffer;
+    switch (transfer->status) {
+        case LIBUSB_TRANSFER_NO_DEVICE:
+            //abort_acquisition(devc);
+            free_transfer(transfer);
+            dslogic_set_error_status(sdi);
+            return;
+        case LIBUSB_TRANSFER_COMPLETED:
+        case LIBUSB_TRANSFER_TIMED_OUT: /* We may have received some data though. */
+            break;
+        default:
+            packet_has_error = TRUE;
+            break;
+    }
+
+    if (transfer->actual_length == 0 || packet_has_error) {
+        if(dslogic_increase_empty_sample_count(sdi)){
+            /*
+             * The FX2 gave up. End the acquisition, the frontend
+             * will work out that the samplecount is short.
+             */
+            sr_dbg("receive_transfer: error");
+            free_transfer(transfer);
+        } else {
+            sr_dbg("receive_transfer: resubmit");
+            dslogic_resubmit_transfer(transfer);
+        }
+        return;
+    } else {
+        sr_dbg("receive_transfer: empty_transfer_count=0");
+        dslogic_reset_empty_transfer_count(sdi);
+    }
+    dslogic_process_data(sdi, cur_buf, transfer->actual_length);
+    if(dslogic_sample_complete(sdi))
+        free_transfer(transfer);
+    else
+        dslogic_resubmit_transfer(transfer);
+}
+
+SR_PRIV void free_transfer(struct libusb_transfer *transfer)
+{
+    struct sr_dev_inst *sdi = transfer->user_data;
+    g_free(transfer->buffer);
+    transfer->buffer = NULL;
+    libusb_free_transfer(transfer);
+    dslogic_clear_transfer(sdi, transfer);
 }

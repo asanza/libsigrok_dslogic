@@ -32,7 +32,6 @@
 #include "libsigrok-internal.h"
 #include "dslogic.h"
 #include "protocol.h"
-#include "transfer.h"
 
 static const struct {
     voltage_range range;
@@ -341,7 +340,7 @@ static GSList *scan(GSList *options) {
 		sdi->priv = devc;
 		drvc->instances = g_slist_append(drvc->instances, sdi);
 		devices = g_slist_append(devices, sdi);
-		if (check_conf_profile(devlist[i])) {
+        if (dslogic_check_conf_profile(devlist[i])) {
 			/* Already has the firmware, so fix the new address. */
 			sr_dbg("Found an DSLogic device.");
 			sdi->status = SR_ST_INACTIVE;
@@ -398,7 +397,7 @@ static int dev_open(struct sr_dev_inst *sdi) {
 		}
 		return SR_ERR;
 	}
-    ret = dslogic_configure_fpga(sdi);
+    ret = dslogic_program_fpga(sdi);
 	return SR_OK;
 }
 
@@ -682,9 +681,8 @@ static int dev_acquisition_start(const struct sr_dev_inst *sdi, void *cb_data) {
 		sr_err("Failed to configure probes.");
 		return SR_ERR;
 	}
-    int ret = dslogic_send_fpga_settings(sdi, cb_data);
-    if(ret!=SR_OK) return ret;
-    ret = dslogic_set_usb_transfer(sdi, &dslogic_driver_info, receive_data);
+    int ret = dslogic_start_acquisition(sdi, &dslogic_driver_info, receive_data,
+                                        cb_data);
     return ret;
 }
 

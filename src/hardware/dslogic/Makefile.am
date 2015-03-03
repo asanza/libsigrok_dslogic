@@ -8,7 +8,5 @@ helloworld_SOURCES = 	api.c \
 						dslogic.h \
 						protocol.c \
 						protocol.h \
-						transfer.c \
-                                                transfer.h \
                                                 fpga.h \
                                                 fpga.c

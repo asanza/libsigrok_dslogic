@@ -76,12 +76,15 @@ static const dslogic_profile supported_fx2[3] = {
 
 	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
+#define NUM_SIMUL_TRANSFERS	64
+#define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
+
+SR_PRIV void dslogic_receive_transfer(struct libusb_transfer *transfer);
+SR_PRIV void dslogic_resubmit_transfer(struct libusb_transfer *transfer);
+SR_PRIV void free_transfer(struct libusb_transfer *transfer);
 
 struct dev_context;
-SR_PRIV int fpga_config(struct libusb_device_handle *hdl, const char *filename);
-SR_PRIV gboolean check_conf_profile(libusb_device *dev);
-SR_PRIV int dev_status_get(struct sr_dev_inst *sdi, struct DSLogic_status *status);
-SR_PRIV int dev_test(struct sr_dev_inst *sdi);
+SR_PRIV gboolean dslogic_check_conf_profile(libusb_device *dev);
 SR_PRIV void receive_trigger_pos(struct libusb_transfer *transfer);
 SR_PRIV unsigned int get_timeout(struct dev_context *devc);
 SR_PRIV unsigned int get_number_of_transfers(struct dev_context *devc);
@@ -95,7 +98,7 @@ SR_PRIV gboolean dslogic_identify_by_vid_and_pid(struct dev_context* devc, int v
 SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile* prof);
 SR_PRIV void dslogic_set_firmware_updated(struct dev_context* devc);
 SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, struct sr_dev_driver* di);
-SR_PRIV int dslogic_configure_fpga(struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_program_fpga(struct sr_dev_inst* sdi);
 SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value);
 SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value);
@@ -107,10 +110,10 @@ SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
 SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_set_capture_ratio(const struct sr_dev_inst* sdi, uint64_t ratio);
-SR_PRIV int dslogic_send_fpga_settings(const struct sr_dev_inst* sdi, void* cb_data);
-SR_PRIV int dslogic_set_usb_transfer(const struct sr_dev_inst* sdi,
+SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
                                      const struct sr_dev_driver * di,
-                                     sr_receive_data_callback receive_data);
+                                     sr_receive_data_callback receive_data,
+                                      void* cb_data);
 SR_PRIV int dslogic_get_sample_count(const struct sr_dev_inst* sdi);
 SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi);

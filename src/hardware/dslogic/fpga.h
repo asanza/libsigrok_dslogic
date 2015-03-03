@@ -11,7 +11,8 @@ SR_PRIV void dslogic_fpga_setting_free(struct dslogic_fpga_setting* setting);
 SR_PRIV void dslogic_fpga_set_mode(struct dslogic_fpga_setting* setting, dev_mode mode);
 SR_PRIV void dslogic_fpga_set_samplerate(struct dslogic_fpga_setting* setting, uint64_t current_sample_rate,
                                          uint64_t sample_limit);
-SR_PRIV void dslogic_fpga_set_trigger(struct dslogic_fpga_setting* setting);
+SR_PRIV void dslogic_fpga_set_trigger(struct dslogic_fpga_setting* setting, uint32_t pretrigger_samples,
+                                      gboolean enabled);
 SR_PRIV int dslogic_get_fpga_setting_size(void);
 SR_PRIV void dslogic_fpga_set_clock(struct dslogic_fpga_setting* setting,
                                     clk_source clock_source, clk_edge clock_edge);

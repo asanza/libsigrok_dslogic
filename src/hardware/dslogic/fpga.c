@@ -159,14 +159,15 @@ SR_PRIV void dslogic_fpga_set_samplerate(struct dslogic_fpga_setting* setting, u
                                          uint64_t sample_limit){
     setting->divider = (uint32_t) ceil(SR_MHZ(100) * 1.0 / current_samplerate);
     setting->count = (uint32_t) (sample_limit);
-    setting->trig_pos = (uint32_t)(/*trigger->trigger_pos*/1 / 100.0f * sample_limit); //danot sure about it.
-    setting->trig_adp = setting->count - setting->trig_pos - 1;
     setting->mode += 0 << 5; //(((devc->current_samplerate == SR_MHZ(200) && 1/*sdi->mode != DSO*/) || (0/*sdi->mode == ANALOG*/)) << 5);
     setting->mode += 0 << 6; //((devc->current_samplerate == SR_MHZ(400)) << 6);
 }
 
-SR_PRIV void dslogic_fpga_set_trigger(struct dslogic_fpga_setting* setting){
-    setting->mode += 0; //trigger->trigger_en;
+SR_PRIV void dslogic_fpga_set_trigger(struct dslogic_fpga_setting* setting, uint32_t pretrigger_samples,
+                                      gboolean enabled){
+    setting->trig_pos = pretrigger_samples; //danot sure about it.
+    setting->trig_adp = setting->count - setting->trig_pos - 1;
+    setting->mode += enabled; //trigger->trigger_en;
     setting->trig_glb = 0; //trigger->trigger_stages; //no trigger stages
     setting->trig_sda = 0x0;
     int i;
