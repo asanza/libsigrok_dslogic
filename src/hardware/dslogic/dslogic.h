@@ -89,6 +89,7 @@ SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile*
 SR_PRIV void dslogic_set_firmware_updated(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, const struct sr_dev_driver* di);
 SR_PRIV int dslogic_program_fpga(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_clock_source(const struct sr_dev_inst* sdi,clk_source source);
 SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi);
 SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value);
 SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value);
@@ -109,11 +110,15 @@ SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide);
 SR_PRIV void dslogic_abort_acquisition(const struct sr_dev_inst* sdi);
-SR_PRIV int dslogic_get_sample_wide(const struct sr_dev_inst* sdi);
 SR_PRIV gboolean dslogic_increase_empty_sample_count(const struct sr_dev_inst* sdi);
 SR_PRIV gboolean dslogic_sample_complete(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, int data_size);
-SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi, int stage_count);
 SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi);
-
+SR_PRIV void dslogic_set_clock_edge(const struct sr_dev_inst* sdi, clk_edge edge);
+SR_PRIV clk_edge dslogic_get_clock_edge(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
+                                      int stage, int mask);
+SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
+                                       int stage, int value);
 #endif

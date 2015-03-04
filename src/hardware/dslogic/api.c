@@ -59,12 +59,12 @@ static const uint32_t devopts[] = {
     SR_CONF_PATTERN_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     SR_CONF_SAMPLERATE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     SR_CONF_CAPTURE_RATIO | SR_CONF_GET | SR_CONF_SET,
-    /*SR_CONF_CONN | SR_CONF_GET,
-	SR_CONF_TRIGGER_MATCH | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
-    SR_CONF_TRIGGER_SOURCE | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
-	SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
-	SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-    SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+    SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
+    SR_CONF_CONN | SR_CONF_GET,
+    SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
+    //SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+    //SR_CONF_TRIGGER_SOURCE | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
+    /*SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
     */// SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
     //SR_CONF_TEST_MODE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
 };
@@ -115,7 +115,7 @@ static int lookup_index(GVariant *value, const char *const *table, int len)
 	return -1;
 }
 
-static const int32_t soft_trigger_matches[] = {
+static const int32_t trigger_matches[] = {
 	SR_TRIGGER_ZERO,
 	SR_TRIGGER_ONE,
 	SR_TRIGGER_RISING,
@@ -126,7 +126,7 @@ static const int32_t soft_trigger_matches[] = {
 /* Names assigned to available trigger slope choices.  Indices must
  * match the signal_edge enum values.
  */
-static const char *const signal_edge_names[] = { "r", "f" };
+static const char *const signal_edge_names[] = { "rising", "falling" };
 
 static const char *channel_names[] = {
 	"0", "1", "2", "3", "4", "5", "6", "7",
@@ -177,40 +177,54 @@ static int receive_data(int fd, int revents, void *cb_data) {
 static int configure_probes(const struct sr_dev_inst *sdi) {
 	printf("configure_probes\n");
 	struct sr_channel *probe;
-	GSList *l;
-    //int  i;
-    //int probe_bit;
-    //int stage = -1;
-	//char *tc;
+    struct sr_trigger *trigger;
+    struct sr_trigger_stage *stage;
+    struct sr_trigger_match *match;
 
+    GSList *l,*m;
     dslogic_clear_trigger_stages(sdi);
+    /* if no triggers, return happily */
 	for (l = sdi->channels; l; l = l->next) {
 		probe = (struct sr_channel *) l->data;
 		if (probe->enabled == FALSE)
 			continue;
-        dslogic_set_trigger_stage(sdi);
-        //probe_bit = 1 << (probe->index);
-        //if (!(probe->trigger))
-        //            continue;
-        //stage = 0;
-        //for (tc = probe->trigger; *tc; tc++) {
-		//			devc->trigger_mask[stage] |= probe_bit;
-		//			if (*tc == '1')
-		//				devc->trigger_value[stage] |= probe_bit;
-		//			stage++;
-		//			if (stage > NUM_TRIGGER_STAGES)
-		//                return SR_ERR;
-		//		}
-        //}
+    }
+    if (!(trigger = sr_session_trigger_get(sdi->session))){
+        dslogic_set_trigger_stage(sdi, TRIGGER_FIRED);
+        return SR_OK;
+    }
 
-        //if (stage == -1)
-		/*
-		 * We didn't configure any triggers, make sure acquisition
-		 * doesn't wait for any.
-		 */
-        //devc->trigger_stage = TRIGGER_FIRED;
-        //else
-                //devc->trigger_stage = 0;
+    int num_stages = g_slist_length(trigger->stages);
+    if(num_stages > NUM_TRIGGER_STAGES){
+        sr_err("This device only supports %d trigger stages.",
+               NUM_TRIGGER_STAGES);
+        return SR_ERR;
+    }
+    dslogic_set_trigger_stage(sdi, num_stages);
+    for(l = trigger->stages; l; l = l->next){
+        stage = l->data;
+        for(m=stage->matches;m;m = m->next){
+            match = m->data;
+            if(!match->channel->enabled)
+                continue;
+            dslogic_set_trigger_mask(sdi, stage->stage,
+                                     1 << match->channel->index);
+            switch(match->match){
+            case SR_TRIGGER_ONE:
+                if(match->match == SR_TRIGGER_ONE)
+                    dslogic_set_trigger_value(sdi, stage->stage,
+                                              1 << match->channel->index);
+                break;
+            case SR_TRIGGER_FALLING:
+                break;
+            case SR_TRIGGER_RISING:
+                break;
+            case SR_TRIGGER_EDGE:
+                break;
+            case SR_TRIGGER_ZERO:
+                break;
+            }
+        }
 	}
 	return SR_OK;
 }
@@ -235,26 +249,20 @@ static int set_probes(struct sr_dev_inst *sdi, int num_probes) {
 	return SR_OK;
 }
 
-static int adjust_probes(struct sr_dev_inst *sdi, int num_probes) {
-    int j;
+static int adjust_probes(const struct sr_dev_inst *sdi, int num_probes) {
 	GSList *l;
 	struct sr_channel *probe;
 	GSList *p;
 	(void)p;
-	(void)l;
     assert(num_probes > 0);
-	j = g_slist_length(sdi->channels);
-	while(j < num_probes) {
-        probe = sr_channel_new (j,SR_CHANNEL_LOGIC,TRUE, channel_names[j]);
-		sdi->channels = g_slist_append(sdi->channels, probe);
-		j++;
-	}
-
-	while(j > num_probes) {
-		p = g_slist_delete_link(sdi->channels, g_slist_last(sdi->channels));
-		j--;
-	}
-    dslogic_set_sample_wide(sdi, num_probes);
+    for(l = sdi->channels; l; l=l->next){
+        probe = (struct sr_channel*)l->data;
+        if(num_probes-- > 0)
+            probe->enabled = TRUE;
+        else
+            probe->enabled = FALSE;
+    }
+    sr_dbg("Adjusted Probes: %d probes found", 16 + num_probes);
 	return SR_OK;
 }
 
@@ -475,16 +483,14 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 		case SR_CONF_SAMPLERATE:
             *data = g_variant_new_uint64(dslogic_get_sample_rate(sdi));
             break;
-		case SR_CONF_EXTERNAL_CLOCK:
+        case SR_CONF_EXTERNAL_CLOCK:
             *data = g_variant_new_boolean(dslogic_get_clock_source(sdi) == CLOCK_EXT_CLK);
 			break;
 		case SR_CONF_CLOCK_EDGE:
-			if(!sdi) return SR_ERR;
-            //devc = sdi->priv;
-            unsigned int idx = 0;//= devc->clock_edge;
-			if (idx >= G_N_ELEMENTS(signal_edge_names))
+            i = dslogic_get_clock_edge(sdi);
+            if (i >= G_N_ELEMENTS(signal_edge_names))
 				return SR_ERR_BUG;
-			*data = g_variant_new_string(signal_edge_names[idx]);
+            *data = g_variant_new_string(signal_edge_names[i]);
 			break;
         case SR_CONF_FILTER:
 			if (!sdi)
@@ -509,9 +515,9 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 				return SR_ERR;
 //			devc = sdi->priv;
             //idx = devc->trigger_source;
-            if (idx >= G_N_ELEMENTS(trigger_source_names))
+            if (i >= G_N_ELEMENTS(trigger_source_names))
                 return SR_ERR_BUG;
-            *data = g_variant_new_string(trigger_source_names[idx]);
+            *data = g_variant_new_string(trigger_source_names[i]);
             break;
 		default:
 			return SR_ERR_NA;
@@ -573,11 +579,10 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
                    G_N_ELEMENTS(signal_edge_names));
         if (idx < 0)
             return SR_ERR_ARG;
-        //devc->clock_edge = idx;
+        dslogic_set_clock_edge(sdi, idx);
         break;
     case SR_CONF_EXTERNAL_CLOCK:
-        //devc->clock_source = (g_variant_get_boolean(data))
-            //? CLOCK_EXT_CLK : CLOCK_INTERNAL;
+        dslogic_set_clock_source(sdi,(g_variant_get_boolean(data))? CLOCK_EXT_CLK : CLOCK_INTERNAL);
         break;
     case SR_CONF_LIMIT_SAMPLES:
         ret = dslogic_set_sample_limit(sdi, g_variant_get_uint64(data));
@@ -635,8 +640,8 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
 			*data = g_variant_builder_end(&gvb);
 			break;
 		case SR_CONF_TRIGGER_MATCH:
-            *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,  soft_trigger_matches,
-                                              ARRAY_SIZE(soft_trigger_matches), sizeof (int32_t));
+            *data = g_variant_new_fixed_array(G_VARIANT_TYPE_INT32,  trigger_matches,
+                                              ARRAY_SIZE(trigger_matches), sizeof (int32_t));
 			break;
 		case SR_CONF_VOLTAGE_THRESHOLD:
 			g_variant_builder_init(&gvb, G_VARIANT_TYPE_ARRAY);

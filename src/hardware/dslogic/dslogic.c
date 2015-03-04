@@ -72,14 +72,14 @@ struct dev_context {
     dslogic_status status;
     /* wide of sample. TRUE = 16 channels (2 bytes),
      * FALSE = 8 channels */
-    gboolean sample_wide;
+    gboolean sample_width;
     gboolean trigger_enabled;
 
     /*sigrok context*/
     struct sr_context* ctx;
 
     /* unknow functions */
-    int trigger_stage;
+    int stage_count;
     uint16_t trigger_mask[NUM_TRIGGER_STAGES];
     uint16_t trigger_value[NUM_TRIGGER_STAGES];
     uint16_t trigger_buffer[NUM_TRIGGER_STAGES];
@@ -317,7 +317,7 @@ static void receive_trigger_pos(struct libusb_transfer *transfer) {
             sr_session_send(devc->cb_data, &packet);
             packet.type = SR_DF_LOGIC;
             packet.payload = &logic;
-            logic.unitsize = devc->sample_wide ? 2 : 1;
+            logic.unitsize = devc->sample_width ? 2 : 1;
             logic.length = sizeof (trigger_pos->first_block);
             logic.data = trigger_pos->first_block;
             devc->sample_count += logic.length / logic.unitsize;
@@ -415,9 +415,9 @@ static unsigned int get_number_of_transfers(struct dev_context *devc) {
 
 static unsigned int to_bytes_per_ms(struct dev_context *devc) {
     if (devc->current_samplerate > SR_MHZ(100))
-        return SR_MHZ(100) / 1000 * (devc->sample_wide ? 2 : 1);
+        return SR_MHZ(100) / 1000 * (devc->sample_width ? 2 : 1);
     else
-        return devc->current_samplerate / 1000 * (devc->sample_wide ? 2 : 1);
+        return devc->current_samplerate / 1000 * (devc->sample_width ? 2 : 1);
 }
 
 static size_t get_buffer_size(struct dev_context *devc) {
@@ -543,7 +543,7 @@ SR_PRIV struct dev_context *dslogic_dev_new(void) {
     devc->fw_updated = 0;
     devc->current_samplerate = DEFAULT_SAMPLERATE;
     devc->sample_limit = DEFAULT_SAMPLELIMIT;
-    devc->sample_wide = 1;
+    devc->sample_width = 1;
     devc->clock_source = CLOCK_INTERNAL;
     devc->clock_edge = RISING;
     devc->capture_ratio = 0;
@@ -566,15 +566,33 @@ SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile*
 }
 
 SR_PRIV void dslogic_set_firmware_updated(const struct sr_dev_inst* sdi){
-    g_boolean(sdi);
+    g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     devc->fw_updated = g_get_monotonic_time();
 }
 
 SR_PRIV clk_source dslogic_get_clock_source(const struct sr_dev_inst* sdi){
-    g_boolean(sdi);
+    g_assert(sdi);
     struct dev_context* devc = sdi->priv;
     return devc->clock_source;
+}
+
+SR_PRIV void dslogic_set_clock_source(const struct sr_dev_inst* sdi,clk_source source){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    devc->clock_source = source;
+}
+
+SR_PRIV void dslogic_set_clock_edge(const struct sr_dev_inst* sdi, clk_edge edge){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    devc->clock_edge = edge;
+}
+
+SR_PRIV clk_edge dslogic_get_clock_edge(const struct sr_dev_inst* sdi){
+    g_assert(sdi);
+    struct dev_context* devc = sdi->priv;
+    return devc->clock_edge;
 }
 
 SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, const struct sr_dev_driver* di){
@@ -688,10 +706,15 @@ SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi){
 SR_PRIV int dslogic_set_samplerate(const struct sr_dev_inst* sdi, uint64_t samplerate){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
-    if(samplerate > SR_MB(400))
+    if(samplerate > SR_MHZ(400))
         return SR_ERR_ARG;
     devc->current_samplerate = samplerate;
-    sr_dbg("New samplerate: %d", devc->current_samplerate);
+    if(samplerate >= SR_MHZ(200))
+        devc->sample_width = FALSE;
+    else
+        devc->sample_width = TRUE;
+    sr_dbg("New samplerate: %d, Sample Width: %d", devc->current_samplerate,
+           devc->sample_width + 1);
     return SR_OK;
 }
 
@@ -735,32 +758,40 @@ SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
     int i;
+    devc->stage_count = 0;
     for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
         devc->trigger_mask[i] = 0;
         devc->trigger_value[i] = 0;
     }
 }
 
-SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide){
+SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi,
+                                       int stage_count){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
-    if ( wide > 7 )
-        devc->sample_wide = TRUE;
+    devc->stage_count = stage_count;
+    if(stage_count < 0)
+        devc->trigger_enabled = FALSE;
     else
-        devc->sample_wide = FALSE;
-    sr_dbg("setting sample wide: %d, Num Probes: %d", devc->sample_wide, wide);
+        devc->trigger_enabled = TRUE;
 }
 
-SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi){
-    g_assert(sdi);
+SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
+                                      int stage, int mask){
     struct dev_context *devc = sdi->priv;
-    devc->trigger_stage = TRIGGER_FIRED;
+    devc->trigger_mask[stage] = mask;
+}
+
+SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
+                                       int stage, int value){
+    struct dev_context *devc = sdi->priv;
+    devc->trigger_value[stage] = value;
 }
 
 SR_PRIV int dslogic_get_sample_wide(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
-    return devc->current_samplerate <= SR_MHZ(100) ? 2 : devc->sample_wide ? 2 : 1;
+    return devc->current_samplerate <= SR_MHZ(100) ? 2 : devc->sample_width ? 2 : 1;
 }
 
 SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi){
@@ -795,18 +826,18 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
     struct sr_datafeed_logic logic;
     int i;
     int trigger_offset = 0;
-    if (devc->trigger_stage >= 0) {
+    if (devc->stage_count >= 0) {
         for (i = 0; i < cur_sample_count; i++) {
-            const uint16_t cur_sample = devc->sample_wide ?
+            const uint16_t cur_sample = devc->sample_width ?
                         *((const uint16_t*) data + i) :
                         *((const uint8_t*) data + i);
-            if ((cur_sample & devc->trigger_mask[devc->trigger_stage]) ==
-                    devc->trigger_value[devc->trigger_stage]) {
+            if ((cur_sample & devc->trigger_mask[devc->stage_count]) ==
+                    devc->trigger_value[devc->stage_count]) {
                 // Match on this trigger stage.
-                devc->trigger_buffer[devc->trigger_stage] = cur_sample;
-                devc->trigger_stage++;
-                if (devc->trigger_stage == NUM_TRIGGER_STAGES ||
-                        devc->trigger_mask[devc->trigger_stage] == 0) {
+                devc->trigger_buffer[devc->stage_count] = cur_sample;
+                devc->stage_count++;
+                if (devc->stage_count == NUM_TRIGGER_STAGES ||
+                        devc->trigger_mask[devc->stage_count] == 0) {
                     // Match on all trigger stages, we're done.
                     trigger_offset = i + 1;
                     /*
@@ -823,13 +854,13 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
                     packet.type = SR_DF_LOGIC;
                     packet.payload = &logic;
                     logic.unitsize = sizeof (*devc->trigger_buffer);
-                    logic.length = devc->trigger_stage * logic.unitsize;
+                    logic.length = devc->stage_count * logic.unitsize;
                     logic.data = devc->trigger_buffer;
                     sr_session_send(devc->cb_data, &packet);
-                    devc->trigger_stage = TRIGGER_FIRED;
+                    devc->stage_count = TRIGGER_FIRED;
                     break;
                 }
-            } else if (devc->trigger_stage > 0) {
+            } else if (devc->stage_count > 0) {
                 /*
                  * We had a match before, but not in the next sample. However, we may
                  * have a match on this stage in the next bit -- trigger on 0001 will
@@ -837,15 +868,15 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
                  * the next sample from the one that matched originally, which the
                  * counter increment at the end of the loop takes care of.
                     */
-                i -= devc->trigger_stage;
+                i -= devc->stage_count;
                 if (i < -1)
                     i = -1; // Oops, went back past this buffer.
                 // Reset trigger stage.
-                devc->trigger_stage = 0;
+                devc->stage_count = 0;
             }
         }
     }
-    if (devc->trigger_stage == TRIGGER_FIRED) {
+    if (devc->stage_count == TRIGGER_FIRED) {
         /* Send the incoming transfer to the session bus. */
         int trigger_offset_bytes = trigger_offset * sample_width;
         packet.type = SR_DF_LOGIC;
@@ -911,7 +942,7 @@ SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
     }
     if(ret!=SR_OK) return ret;
     if ((ret = command_start_acquisition(usb->devhdl,devc->current_samplerate,
-                                         devc->sample_wide, TRUE)) != SR_OK) {
+                                         devc->sample_width, TRUE)) != SR_OK) {
         dslogic_abort_acquisition(sdi);
         return ret;
     }

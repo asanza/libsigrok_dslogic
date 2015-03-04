@@ -122,7 +122,7 @@ static GSList *scan(GSList *options)
 		for (i = 0; channel_names[i]; i++) {
 			ch = sr_channel_new(i, SR_CHANNEL_LOGIC, TRUE,
 				channel_names[i]);
-			sdi->channels = g_slist_append(sdi->channels, ch);
+                        sdi->channels = g_slist_append(sdi->channels, ch);
 			devc->channels[i] = ch;
 		}
 
