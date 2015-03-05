@@ -62,11 +62,8 @@ static const uint32_t devopts[] = {
     SR_CONF_EXTERNAL_CLOCK | SR_CONF_SET | SR_CONF_GET,
     SR_CONF_CONN | SR_CONF_GET,
     SR_CONF_TRIGGER_MATCH | SR_CONF_LIST,
-    //SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-    //SR_CONF_TRIGGER_SOURCE | SR_CONF_LIST | SR_CONF_SET | SR_CONF_GET,
-    /*SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
-    */// SR_CONF_DEVICE_MODE | SR_CONF_GET | SR_CONF_SET | SR_CONF_LIST,
-    //SR_CONF_TEST_MODE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+    SR_CONF_CLOCK_EDGE | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
+    SR_CONF_FILTER | SR_CONF_SET | SR_CONF_GET | SR_CONF_LIST,
 };
 
 /* Names assigned to available trigger sources.  Indices must match
@@ -201,31 +198,23 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
         return SR_ERR;
     }
     dslogic_set_trigger_stage(sdi, num_stages);
+    int i = 0;
     for(l = trigger->stages; l; l = l->next){
         stage = l->data;
         for(m=stage->matches;m;m = m->next){
             match = m->data;
             if(!match->channel->enabled)
                 continue;
-            dslogic_set_trigger_mask(sdi, stage->stage,
-                                     1 << match->channel->index);
-            switch(match->match){
-            case SR_TRIGGER_ONE:
-                if(match->match == SR_TRIGGER_ONE)
-                    dslogic_set_trigger_value(sdi, stage->stage,
-                                              1 << match->channel->index);
-                break;
-            case SR_TRIGGER_FALLING:
-                break;
-            case SR_TRIGGER_RISING:
-                break;
-            case SR_TRIGGER_EDGE:
-                break;
-            case SR_TRIGGER_ZERO:
-                break;
-            }
+            dslogic_set_trigger(sdi, stage->stage,
+                                    match->channel->index,
+                                    match->match);
+            dslogic_set_trigger_mask(sdi, i, 1 << match->channel->index);
+            if(match->match == SR_TRIGGER_ONE)
+                dslogic_set_trigger_value(sdi, i, 1 << match->channel->index);
+            i++;
         }
 	}
+    dslogic_set_trigger_stage(sdi,0);
 	return SR_OK;
 }
 
@@ -498,31 +487,9 @@ static int config_get(uint32_t id, GVariant **data, const struct sr_dev_inst *sd
 //			devc = sdi->priv;
             //*data = g_variant_new_boolean (devc->filter);
 			break;
-		case SR_CONF_TIMEBASE:
-			if (!sdi)
-				return SR_ERR;
-//			devc = sdi->priv;
-            //*data = g_variant_new_uint64(devc->timebase);
-			break;
-		case SR_CONF_TRIGGER_SLOPE:
-			if (!sdi)
-				return SR_ERR;
-//			devc = sdi->priv;
-            //*data = g_variant_new_byte(devc->trigger_slope);
-			break;
-		case SR_CONF_TRIGGER_SOURCE:
-			if (!sdi)
-				return SR_ERR;
-//			devc = sdi->priv;
-            //idx = devc->trigger_source;
-            if (i >= G_N_ELEMENTS(trigger_source_names))
-                return SR_ERR_BUG;
-            *data = g_variant_new_string(trigger_source_names[i]);
-            break;
 		default:
 			return SR_ERR_NA;
 	}
-
 	return SR_OK;
 }
 
@@ -538,13 +505,6 @@ static int config_set(uint32_t id, GVariant *data, const struct sr_dev_inst *sdi
     int idx;
     const char* stropt;
     switch(id){
-    case SR_CONF_TRIGGER_SOURCE:
-        idx = lookup_index(data, trigger_source_names,
-                   G_N_ELEMENTS(trigger_source_names));
-        if (idx < 0)
-            return SR_ERR_ARG;
-        //devc->trigger_source = idx;
-        break;
     case SR_CONF_PATTERN_MODE:
         stropt = g_variant_get_string(data, NULL);
         ret = SR_OK;
@@ -661,16 +621,11 @@ static int config_list(uint32_t key, GVariant **data, const struct sr_dev_inst *
             g_variant_builder_add_value(&gvb, range[1]);
             *data = g_variant_builder_end(&gvb);
             break;
-		case SR_CONF_TRIGGER_SLOPE:
 		case SR_CONF_CLOCK_EDGE:
 			*data = g_variant_new_strv(signal_edge_names,
 					   G_N_ELEMENTS(signal_edge_names));
 		break;
-        case SR_CONF_TRIGGER_SOURCE:
-            *data = g_variant_new_strv(trigger_source_names,
-                       G_N_ELEMENTS(trigger_source_names));
-        break;
-		default:
+        default:
 			return SR_ERR_NA;
 	}
 	return SR_OK;

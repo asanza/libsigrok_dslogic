@@ -163,63 +163,117 @@ SR_PRIV void dslogic_fpga_set_samplerate(struct dslogic_fpga_setting* setting, u
     setting->mode += 0 << 6; //((devc->current_samplerate == SR_MHZ(400)) << 6);
 }
 
+static uint64_t trigger_get_mask0(int stage, struct fpga_trigger_settings* settings){
+    g_assert(stage <= NUM_TRIGGER_STAGES);
+    uint64_t mask = 0;
+    int i;
+    for (i = NUM_TRIGGER_STAGES - 1; i >= 0 ; i--) {
+        mask = (mask << 1);
+        mask += ((settings->trigger0[stage][i] == TRIGGER_FIRED) | (settings->trigger0[stage][i] == SR_TRIGGER_EDGE));
+    }
+    return mask;
+}
+
+static uint64_t trigger_get_mask1(uint16_t stage, struct fpga_trigger_settings* settings){
+    g_assert(stage <= NUM_TRIGGER_STAGES);
+    uint64_t mask = 0;
+    int i;
+    for (i = NUM_TRIGGER_STAGES - 1; i >= 0 ; i--) {
+        mask = (mask << 1);
+        mask += ((settings->trigger1[stage][i] == TRIGGER_FIRED) | (settings->trigger1[stage][i] == SR_TRIGGER_EDGE));
+    }
+    return mask;
+}
+
+static uint64_t trigger_get_value0(uint16_t stage, struct fpga_trigger_settings* settings)
+{
+    g_assert(stage <= NUM_TRIGGER_STAGES);
+    uint64_t value = 0;
+    int i;
+    for (i = NUM_TRIGGER_STAGES - 1; i >= 0 ; i--) {
+        value = (value << 1);
+        value += ((settings->trigger0[stage][i] == SR_TRIGGER_ONE) | (settings->trigger0[stage][i] == SR_TRIGGER_RISING));
+    }
+    return value;
+}
+
+static uint64_t trigger_get_value1(uint16_t stage, struct fpga_trigger_settings* settings)
+{
+    g_assert(stage <= NUM_TRIGGER_STAGES);
+    uint64_t value = 0;
+    int i;
+    for (i = NUM_TRIGGER_STAGES - 1; i >= 0 ; i--) {
+        value = (value << 1);
+        value += ((settings->trigger1[stage][i] == SR_TRIGGER_ONE) | (settings->trigger1[stage][i] == SR_TRIGGER_RISING));
+    }
+    return value;
+}
+
+static uint64_t trigger_get_edge0(uint16_t stage, struct fpga_trigger_settings* settings)
+{
+    g_assert(stage <= NUM_TRIGGER_STAGES);
+    uint64_t edge = 0;
+    int i;
+    for (i = NUM_TRIGGER_STAGES - 1; i >= 0 ; i--) {
+        edge = (edge << 1);
+        edge += ((settings->trigger0[stage][i] == SR_TRIGGER_RISING) | (settings->trigger0[stage][i] == SR_TRIGGER_FALLING) |
+                 (settings->trigger0[stage][i] == SR_TRIGGER_EDGE));
+    }
+    return edge;
+}
+
+static uint64_t trigger_get_edge1(uint16_t stage, struct fpga_trigger_settings* settings)
+{
+    g_assert(stage <= NUM_TRIGGER_STAGES);
+    uint64_t edge = 0;
+    int i;
+    for (i = NUM_TRIGGER_STAGES - 1; i >= 0 ; i--) {
+        edge = (edge << 1);
+        edge += ((settings->trigger1[stage][i] == SR_TRIGGER_RISING) | (settings->trigger1[stage][i] == SR_TRIGGER_FALLING) |
+                 (settings->trigger1[stage][i] == SR_TRIGGER_EDGE));
+    }
+    return edge;
+}
+
 SR_PRIV void dslogic_fpga_set_trigger(struct dslogic_fpga_setting* setting, uint32_t pretrigger_samples,
-                                      gboolean enabled){
+                                      gboolean enabled, struct fpga_trigger_settings* trigger_settings){
     setting->trig_pos = pretrigger_samples; //danot sure about it.
     setting->trig_adp = setting->count - setting->trig_pos - 1;
-    setting->mode += enabled; //trigger->trigger_en;
-    setting->trig_glb = 0; //trigger->trigger_stages; //no trigger stages
+    setting->mode += enabled;
+    setting->trig_glb = trigger_settings->stage_count;
     setting->trig_sda = 0x0;
     int i;
-    if (1) {//trigger->trigger_mode == SIMPLE_TRIGGER) {
-        setting->trig_mask0[0] = 0; //ds_trigger_get_mask0(TriggerStages);
-        setting->trig_mask1[0] = 0; //ds_trigger_get_mask1(TriggerStages);
+    /*for now, only simple triggers are suported*/
+    setting->trig_mask0[0] = trigger_get_mask0(NUM_TRIGGER_STAGES, trigger_settings);
+    setting->trig_mask1[0] = trigger_get_mask1(NUM_TRIGGER_STAGES, trigger_settings);
 
-        setting->trig_value0[0] = 0; //ds_trigger_get_value0(TriggerStages);
-        setting->trig_value1[0] = 0; //ds_trigger_get_value1(TriggerStages);
+    setting->trig_value0[0] = trigger_get_value0(NUM_TRIGGER_STAGES, trigger_settings);
+    setting->trig_value1[0] = trigger_get_value1(NUM_TRIGGER_STAGES, trigger_settings);
 
-        setting->trig_edge0[0] = 0; //ds_trigger_get_edge0(TriggerStages);
-        setting->trig_edge1[0] = 0; //ds_trigger_get_edge1(TriggerStages);
+    setting->trig_edge0[0] = trigger_get_edge0(NUM_TRIGGER_STAGES, trigger_settings);
+    setting->trig_edge1[0] = trigger_get_edge1(NUM_TRIGGER_STAGES, trigger_settings);
 
-        setting->trig_count0[0] = 0; //trigger->trigger0_count[TriggerStages];
-        setting->trig_count1[0] = 0; // trigger->trigger1_count[TriggerStages];
+    setting->trig_count0[0] = trigger_settings->trigger0_count[NUM_TRIGGER_STAGES];
+    setting->trig_count1[0] = trigger_settings->trigger1_count[NUM_TRIGGER_STAGES];
 
-        setting->trig_logic0[0] = 0; //(trigger->trigger_logic[TriggerStages] << 1) + trigger->trigger0_inv[TriggerStages];
-        setting->trig_logic1[0] = 0; //(trigger->trigger_logic[TriggerStages] << 1) + trigger->trigger1_inv[TriggerStages];
+    setting->trig_logic0[0] = (trigger_settings->trigger_logic[NUM_TRIGGER_STAGES] << 1) + trigger_settings->trigger0_inv[NUM_TRIGGER_STAGES];
+    setting->trig_logic1[0] = (trigger_settings->trigger_logic[NUM_TRIGGER_STAGES] << 1) + trigger_settings->trigger1_inv[NUM_TRIGGER_STAGES];
 
-        for (i = 1; i < NUM_TRIGGER_STAGES; i++) {
-            setting->trig_mask0[i] = 0xff;
-            setting->trig_mask1[i] = 0xff;
+    for (i = 1; i < NUM_TRIGGER_STAGES; i++) {
+        setting->trig_mask0[i] = 0xff;
+        setting->trig_mask1[i] = 0xff;
 
-            setting->trig_value0[i] = 0;
-            setting->trig_value1[i] = 0;
+        setting->trig_value0[i] = 0;
+        setting->trig_value1[i] = 0;
 
-            setting->trig_edge0[i] = 0;
-            setting->trig_edge1[i] = 0;
+        setting->trig_edge0[i] = 0;
+        setting->trig_edge1[i] = 0;
 
-            setting->trig_count0[i] = 0;
-            setting->trig_count1[i] = 0;
+        setting->trig_count0[i] = 0;
+        setting->trig_count1[i] = 0;
 
-            setting->trig_logic0[i] = 2;
-            setting->trig_logic1[i] = 2;
-        }
-    } else {/*
-        for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
-            setting->trig_mask0[i] = ds_trigger_get_mask0(i);
-            setting->trig_mask1[i] = ds_trigger_get_mask1(i);
-
-            setting->trig_value0[i] = ds_trigger_get_value0(i);
-            setting->trig_value1[i] = ds_trigger_get_value1(i);
-
-            setting->trig_edge0[i] = ds_trigger_get_edge0(i);
-            setting->trig_edge1[i] = ds_trigger_get_edge1(i);
-
-            setting->trig_count0[i] = trigger->trigger0_count[i];
-            setting->trig_count1[i] = trigger->trigger1_count[i];
-
-            setting->trig_logic0[i] = (trigger->trigger_logic[i] << 1) + trigger->trigger0_inv[i];
-            setting->trig_logic1[i] = (trigger->trigger_logic[i] << 1) + trigger->trigger1_inv[i];
-        }*/
+        setting->trig_logic0[i] = 2;
+        setting->trig_logic1[i] = 2;
     }
 }
 

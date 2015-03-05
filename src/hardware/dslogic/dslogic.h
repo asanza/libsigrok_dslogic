@@ -117,8 +117,7 @@ SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi, int stage_
 SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi);
 SR_PRIV void dslogic_set_clock_edge(const struct sr_dev_inst* sdi, clk_edge edge);
 SR_PRIV clk_edge dslogic_get_clock_edge(const struct sr_dev_inst* sdi);
-SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
-                                      int stage, int mask);
-SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
-                                       int stage, int value);
+
+SR_PRIV void dslogic_set_trigger(const struct sr_dev_inst* sdi,
+                                       int stage, int probe, int trigger);
 #endif

@@ -78,14 +78,12 @@ struct dev_context {
     /*sigrok context*/
     struct sr_context* ctx;
 
-    /* unknow functions */
-    int stage_count;
+    /* trigger */
+    struct fpga_trigger_settings trigger_settings;
     uint16_t trigger_mask[NUM_TRIGGER_STAGES];
     uint16_t trigger_value[NUM_TRIGGER_STAGES];
     uint16_t trigger_buffer[NUM_TRIGGER_STAGES];
-    uint64_t timebase;
-    uint8_t trigger_slope;
-    uint8_t trigger_source;
+
 };
 
 static int dev_transfer_start(const struct sr_dev_inst *sdi);
@@ -174,7 +172,7 @@ static int set_fpga_setting(const struct sr_dev_inst *sdi) {
     dslogic_fpga_set_mode(setting, devc->device_mode);
     dslogic_fpga_set_samplerate(setting,devc->current_samplerate, devc->sample_limit);
     dslogic_fpga_set_trigger(setting, (uint32_t)(devc->capture_ratio/ 100.0f * devc->sample_limit),
-                             devc->trigger_enabled);
+                             devc->trigger_enabled, &devc->trigger_settings);
     int setting_size = dslogic_get_fpga_setting_size();
     ret = libusb_bulk_transfer(hdl, 2 | LIBUSB_ENDPOINT_OUT,
                                (unsigned char*)setting, setting_size,
@@ -539,6 +537,7 @@ SR_PRIV struct dev_context *dslogic_dev_new(void) {
         sr_err("Device context malloc failed.");
         return NULL;
     }
+    int i,j;
     devc->profile = NULL;
     devc->fw_updated = 0;
     devc->current_samplerate = DEFAULT_SAMPLERATE;
@@ -549,9 +548,19 @@ SR_PRIV struct dev_context *dslogic_dev_new(void) {
     devc->capture_ratio = 0;
     devc->voltage_threshold = VOLTAGE_RANGE_18_33_V;
     devc->filter = FALSE;
-    devc->trigger_source = 0 ;
     devc->device_mode = NORMAL_MODE;
     devc->trigger_enabled = FALSE;
+    for (i = 0; i <= NUM_TRIGGER_STAGES; i++) {
+        for (j = 0; j < NUM_TRIGGER_STAGES; j++) {
+            devc->trigger_settings.trigger0[i][j] = TRIGGER_FIRED;
+            devc->trigger_settings.trigger1[i][j] = TRIGGER_FIRED;
+        }
+        devc->trigger_settings.trigger0_count[i] = 0;
+        devc->trigger_settings.trigger1_count[i] = 0;
+        devc->trigger_settings.trigger0_inv[i] = 0;
+        devc->trigger_settings.trigger1_inv[i] = 0;
+        devc->trigger_settings.trigger_logic[i] = 1;
+    }
     return devc;
 }
 
@@ -758,40 +767,49 @@ SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
     int i;
-    devc->stage_count = 0;
-    for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
-        devc->trigger_mask[i] = 0;
-        devc->trigger_value[i] = 0;
-    }
+    devc->trigger_settings.stage_count = 0;
 }
 
 SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi,
                                        int stage_count){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
-    devc->stage_count = stage_count;
+    devc->trigger_settings.stage_count = stage_count;
     if(stage_count < 0)
         devc->trigger_enabled = FALSE;
     else
         devc->trigger_enabled = TRUE;
+    /* clear all past triggers: TODO: move own function? */
+    int i;
+    for(i = 0; i < NUM_TRIGGER_STAGES; i++){
+        devc->trigger_settings.trigger0[NUM_TRIGGER_STAGES][i] = TRIGGER_FIRED;
+        devc->trigger_settings.trigger1[NUM_TRIGGER_STAGES][i] = TRIGGER_FIRED;
+    }
 }
 
-SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
-                                      int stage, int mask){
-    struct dev_context *devc = sdi->priv;
-    devc->trigger_mask[stage] = mask;
-}
-
-SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
-                                       int stage, int value){
-    struct dev_context *devc = sdi->priv;
-    devc->trigger_value[stage] = value;
+SR_PRIV void dslogic_set_trigger(const struct sr_dev_inst* sdi,
+                                       int stage, int probe,  int trigger){
+    struct dev_context *devc = sdi->priv;    
+    devc->trigger_settings.trigger0[NUM_TRIGGER_STAGES][probe] = trigger;
+    devc->trigger_settings.trigger1[NUM_TRIGGER_STAGES][probe] = TRIGGER_FIRED; //Dont care
 }
 
 SR_PRIV int dslogic_get_sample_wide(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
     return devc->current_samplerate <= SR_MHZ(100) ? 2 : devc->sample_width ? 2 : 1;
+}
+
+SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
+                                      int stage, int probe_bit){
+    struct dev_context* devc = sdi->priv;
+    devc->trigger_mask[stage] |= probe_bit;
+}
+
+SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
+                                       int stage, int probe_bit){
+    struct dev_context* devc = sdi->priv;
+    devc->trigger_value[stage] |= probe_bit;
 }
 
 SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi){
@@ -826,18 +844,18 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
     struct sr_datafeed_logic logic;
     int i;
     int trigger_offset = 0;
-    if (devc->stage_count >= 0) {
+    if (devc->trigger_settings.stage_count >= 0) {
         for (i = 0; i < cur_sample_count; i++) {
             const uint16_t cur_sample = devc->sample_width ?
                         *((const uint16_t*) data + i) :
                         *((const uint8_t*) data + i);
-            if ((cur_sample & devc->trigger_mask[devc->stage_count]) ==
-                    devc->trigger_value[devc->stage_count]) {
+            if ((cur_sample & devc->trigger_mask[devc->trigger_settings.stage_count]) ==
+                    devc->trigger_value[devc->trigger_settings.stage_count]) {
                 // Match on this trigger stage.
-                devc->trigger_buffer[devc->stage_count] = cur_sample;
-                devc->stage_count++;
-                if (devc->stage_count == NUM_TRIGGER_STAGES ||
-                        devc->trigger_mask[devc->stage_count] == 0) {
+                devc->trigger_buffer[devc->trigger_settings.stage_count] = cur_sample;
+                devc->trigger_settings.stage_count++;
+                if (devc->trigger_settings.stage_count == NUM_TRIGGER_STAGES ||
+                        devc->trigger_mask[devc->trigger_settings.stage_count] == 0) {
                     // Match on all trigger stages, we're done.
                     trigger_offset = i + 1;
                     /*
@@ -854,29 +872,29 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
                     packet.type = SR_DF_LOGIC;
                     packet.payload = &logic;
                     logic.unitsize = sizeof (*devc->trigger_buffer);
-                    logic.length = devc->stage_count * logic.unitsize;
+                    logic.length = devc->trigger_settings.stage_count * logic.unitsize;
                     logic.data = devc->trigger_buffer;
                     sr_session_send(devc->cb_data, &packet);
-                    devc->stage_count = TRIGGER_FIRED;
+                    devc->trigger_settings.stage_count = TRIGGER_FIRED;
                     break;
                 }
-            } else if (devc->stage_count > 0) {
+            } else if (devc->trigger_settings.stage_count > 0) {
                 /*
                  * We had a match before, but not in the next sample. However, we may
                  * have a match on this stage in the next bit -- trigger on 0001 will
                  * fail on seeing 00001, so we need to go back to stage 0 -- but at
                  * the next sample from the one that matched originally, which the
                  * counter increment at the end of the loop takes care of.
-                    */
-                i -= devc->stage_count;
+                 */
+                i -= devc->trigger_settings.stage_count;
                 if (i < -1)
                     i = -1; // Oops, went back past this buffer.
                 // Reset trigger stage.
-                devc->stage_count = 0;
+                devc->trigger_settings.stage_count = 0;
             }
         }
     }
-    if (devc->stage_count == TRIGGER_FIRED) {
+    if (devc->trigger_settings.stage_count == TRIGGER_FIRED) {
         /* Send the incoming transfer to the session bus. */
         int trigger_offset_bytes = trigger_offset * sample_width;
         packet.type = SR_DF_LOGIC;
