@@ -32,7 +32,7 @@ AC_INIT([libsigrok], [sr_package_version], [sigrok-devel@lists.sourceforge.net],
 AC_CONFIG_HEADER([config.h])
 AC_CONFIG_MACRO_DIR([autostuff])
 AC_CONFIG_AUX_DIR([autostuff])
-
+AM_MAINTAINER_MODE([enable]) 
 # We require this to know the target settings if we're cross-compiling.
 AC_CANONICAL_SYSTEM
 
@@ -47,7 +47,7 @@ AH_BOTTOM([#endif /* SR_CONFIG_H */])
 
 # Enable more compiler warnings via -Wall and -Wextra. Add -fvisibility=hidden
 # and enforce use of SR_API to explicitly mark all public API functions.
-COMMON_FLAGS="$CFLAGS -Wall -Wextra -fvisibility=hidden"
+COMMON_FLAGS="$CFLAGS -g -O0 -Wall -Wextra -fvisibility=hidden"
 CFLAGS="$COMMON_FLAGS -Wmissing-prototypes"
 CXXFLAGS="-std=c++11 $COMMON_FLAGS"
 

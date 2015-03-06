@@ -19,11 +19,13 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef LIBDSLOGIC_HARDWARE_API_H
-#define LIBDSLOGIC_HARDWARE_API_H
+#ifndef LIBDSLOGIC_HARDWARE_DSLOGIC_H
+#define LIBDSLOGIC_HARDWARE_DSLOGIC_H
 
 #include <glib.h>
 #include <libsigrok.h>
+#include "devdefs.h"
+#include "protocol.h"
 
 /* Message logging helpers with subsystem-specific prefix string. */
 #define LOG_PREFIX "DSLogic Hardware: "
@@ -36,12 +38,9 @@
 
 #define USB_INTERFACE		0
 #define USB_CONFIGURATION	1
-#define NUM_TRIGGER_STAGES	16
 #define TRIGGER_TYPE 		"01"
 
 #define MAX_RENUM_DELAY_MS	3000
-#define NUM_SIMUL_TRANSFERS	64
-#define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
 
 #define DSLOGIC_REQUIRED_VERSION_MAJOR	1
 
@@ -50,9 +49,6 @@
 
 /* 6 delay states of up to 256 clock ticks */
 #define MAX_SAMPLE_DELAY	(6 * 256)
-
-/* Software trigger implementation: positive values indicate trigger stage. */
-#define TRIGGER_FIRED          -1
 
 #define DEV_CAPS_16BIT_POS	0
 
@@ -67,29 +63,8 @@
 #define SR_KB(n) ((n) * (uint64_t)(1024ULL))
 #define SR_MB(n) ((n) * (uint64_t)(1048576ULL))
 
-enum voltage_range {
-	VOLTAGE_RANGE_UNKNOWN,
-	VOLTAGE_RANGE_18_33_V,	/* 1.8V and 3.3V logic */
-	VOLTAGE_RANGE_5_V,	/* 5V logic */
-};
 
-struct DSLogic_profile {
-	uint16_t vid;
-	uint16_t pid;
-
-	const char *vendor;
-	const char *model;
-	const char *model_version;
-
-	const char *firmware;
-
-	const char *fpga_bit33;
-	const char *fpga_bit50;
-
-	uint32_t dev_caps;
-};
-
-static const struct DSLogic_profile supported_fx2[3] = {
+static const dslogic_profile supported_fx2[3] = {
 	/*
 	 * DSLogic
 	 */
@@ -101,121 +76,49 @@ static const struct DSLogic_profile supported_fx2[3] = {
 
 	{ 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 };
+#define NUM_SIMUL_TRANSFERS	64
+#define MAX_EMPTY_TRANSFERS	(NUM_SIMUL_TRANSFERS * 2)
 
-enum {
-	DSLOGIC_ERROR = -1,
-	DSLOGIC_INIT = 0,
-	DSLOGIC_START = 1,
-	DSLOGIC_TRIGGERED = 2,
-	DSLOGIC_DATA = 3,
-	DSLOGIC_STOP = 4,
-};
+struct dev_context;
+SR_PRIV gboolean dslogic_check_conf_profile(libusb_device *dev);
 
-struct dev_context {
-	const struct DSLogic_profile *profile;
-	/*
-	 * Since we can't keep track of an DSLogic device after upgrading
-	 * the firmware (it renumerates into a different device address
-	                 * after the upgrade) this is like a global lock. No device will open
-		 * until a proper delay after the last device was upgraded.
-		 */
-	int64_t fw_updated;
-
-	/* libsigrok context */
-	struct sr_context* ctx;
-	/* Device/capture settings */
-	uint64_t cur_samplerate;
-	uint64_t limit_samples;
-
-	/* Operational settings */
-	gboolean sample_wide;
-	gboolean clock_type;
-	gboolean clock_edge;
-	uint16_t op_mode;
-	uint16_t th_level;
-	uint16_t filter;
-	uint16_t trigger_mask[NUM_TRIGGER_STAGES];
-	uint16_t trigger_value[NUM_TRIGGER_STAGES];
-	int trigger_stage;
-	uint16_t trigger_buffer[NUM_TRIGGER_STAGES];
-	uint64_t timebase;
-	uint8_t trigger_slope;
-	uint8_t trigger_source;
-	uint32_t trigger_hpos;
-	gboolean zero;
-
-	int num_samples;
-	int submitted_transfers;
-	int empty_transfer_count;
-
-	void *cb_data;
-	unsigned int num_transfers;
-	struct libusb_transfer **transfers;
-	int *usbfd;
-
-	int pipe_fds[2];
-	GIOChannel *channel;
-
-	int status;
-};
-
-struct DSLogic_setting {
-	uint32_t sync;
-	uint16_t mode_header;                   // 0
-	uint16_t mode;
-	uint32_t divider_header;                // 1-2
-	uint32_t divider;
-	uint32_t count_header;                  // 3-4
-	uint32_t count;
-	uint32_t trig_pos_header;               // 5-6
-	uint32_t trig_pos;
-	uint16_t trig_glb_header;               // 7
-	uint16_t trig_glb;
-	uint32_t trig_adp_header;               // 10-11
-	uint32_t trig_adp;
-	uint32_t trig_sda_header;               // 12-13
-	uint32_t trig_sda;
-	uint32_t trig_mask0_header;              // 16
-	uint16_t trig_mask0[NUM_TRIGGER_STAGES];
-	uint32_t trig_mask1_header;              // 17
-	uint16_t trig_mask1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_mask2_header;              // 18
-	//uint16_t trig_mask2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_mask3_header;              // 19
-	//uint16_t trig_mask3[NUM_TRIGGER_STAGES];
-	uint32_t trig_value0_header;             // 20
-	uint16_t trig_value0[NUM_TRIGGER_STAGES];
-	uint32_t trig_value1_header;             // 21
-	uint16_t trig_value1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_value2_header;             // 22
-	//uint16_t trig_value2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_value3_header;             // 23
-	//uint16_t trig_value3[NUM_TRIGGER_STAGES];
-	uint32_t trig_edge0_header;              // 24
-	uint16_t trig_edge0[NUM_TRIGGER_STAGES];
-	uint32_t trig_edge1_header;              // 25
-	uint16_t trig_edge1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_edge2_header;              // 26
-	//uint16_t trig_edge2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_edge3_header;              // 27
-	//uint16_t trig_edge3[NUM_TRIGGER_STAGES];
-	uint32_t trig_count0_header;             // 28
-	uint16_t trig_count0[NUM_TRIGGER_STAGES];
-	uint32_t trig_count1_header;             // 29
-	uint16_t trig_count1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_count2_header;             // 30
-	//uint16_t trig_count2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_count3_header;             // 31
-	//uint16_t trig_count3[NUM_TRIGGER_STAGES];
-	uint32_t trig_logic0_header;             // 32
-	uint16_t trig_logic0[NUM_TRIGGER_STAGES];
-	uint32_t trig_logic1_header;             // 33
-	uint16_t trig_logic1[NUM_TRIGGER_STAGES];
-	//uint32_t trig_logic2_header;             // 34
-	//uint16_t trig_logic2[NUM_TRIGGER_STAGES];
-	//uint32_t trig_logic3_header;             // 35
-	//uint16_t trig_logic3[NUM_TRIGGER_STAGES];
-	uint32_t end_sync;
-};
-
+// NEW_API
+SR_PRIV struct dev_context *dslogic_dev_new(void);
+SR_PRIV clk_source dslogic_get_clock_source(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_profile(struct dev_context* devc,const dslogic_profile* prof);
+SR_PRIV void dslogic_set_firmware_updated(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_dev_open(struct sr_dev_inst* sdi, const struct sr_dev_driver* di);
+SR_PRIV int dslogic_program_fpga(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_clock_source(const struct sr_dev_inst* sdi,clk_source source);
+SR_PRIV uint64_t dslogic_get_sample_limit(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_set_sample_limit(const struct sr_dev_inst* sdi, uint64_t value);
+SR_PRIV int dslogic_set_voltage_threshold(const struct sr_dev_inst* sdi, voltage_range value);
+SR_PRIV voltage_range dslogic_get_voltage_threshold(const struct sr_dev_inst* sdi);
+SR_PRIV dev_mode dslogic_get_device_mode(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_set_device_mode(const struct sr_dev_inst* sdi, dev_mode value);
+SR_PRIV int dslogic_set_samplerate(const struct sr_dev_inst* sdi, uint64_t samplerate);
+SR_PRIV uint64_t dslogic_get_sample_rate(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_acquisition_stop(const struct sr_dev_inst* sdi);
+SR_PRIV uint64_t dslogic_get_capture_ratio(const struct sr_dev_inst* sdi);
+SR_PRIV int dslogic_set_capture_ratio(const struct sr_dev_inst* sdi, uint64_t ratio);
+SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
+                                     const struct sr_dev_driver * di,
+                                     sr_receive_data_callback receive_data,
+                                      void* cb_data);
+SR_PRIV int dslogic_get_sample_count(const struct sr_dev_inst* sdi);
+SR_PRIV dslogic_status dslogic_get_device_status(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_sample_wide(const struct sr_dev_inst* sdi, int wide);
+SR_PRIV void dslogic_abort_acquisition(const struct sr_dev_inst* sdi);
+SR_PRIV gboolean dslogic_increase_empty_sample_count(const struct sr_dev_inst* sdi);
+SR_PRIV gboolean dslogic_sample_complete(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, int data_size);
+SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi, int stage_count);
+SR_PRIV void dslogic_reset_empty_transfer_count(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_clock_edge(const struct sr_dev_inst* sdi, clk_edge edge);
+SR_PRIV clk_edge dslogic_get_clock_edge(const struct sr_dev_inst* sdi);
+SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
+                                      int stage, int mask);
+SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
+                                       int stage, int value);
 #endif

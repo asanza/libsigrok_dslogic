@@ -20,7 +20,7 @@
 
 ACLOCAL_AMFLAGS = -I autostuff
 
-AM_CPPFLAGS = -g -O0 -I$(srcdir)/src -DFIRMWARE_DIR='"$(FIRMWARE_DIR)"'
+AM_CPPFLAGS = -I$(srcdir)/src -DFIRMWARE_DIR='"$(FIRMWARE_DIR)"'
 
 lib_LTLIBRARIES = libsigrok.la
 
@@ -218,7 +218,12 @@ if HW_DSLOGIC
 libsigrok_la_SOURCES += \
 	src/hardware/dslogic/api.c \
 	src/hardware/dslogic/protocol.c\
-	src/hardware/dslogic/protocol.h
+        src/hardware/dslogic/protocol.h \
+        src/hardware/dslogic/fpga.c \
+        src/hardware/dslogic/fpga.h \
+        src/hardware/dslogic/dslogic.h \
+        src/hardware/dslogic/dslogic.c \
+        src/hardware/dslogic/devdefs.h
 endif
 if HW_FLUKE_DMM
 libsigrok_la_SOURCES += \
@@ -395,9 +400,7 @@ libsigrok_la_SOURCES += \
 	src/hardware/zeroplus-logic-cube/gl_usb.c \
 	src/hardware/zeroplus-logic-cube/protocol.h \
 	src/hardware/zeroplus-logic-cube/protocol.c \
-	src/hardware/zeroplus-logic-cube/api.c \
-	src/hardware/dslogic/dslogic.h \
-	src/hardware/dslogic/dslogic.c
+        src/hardware/zeroplus-logic-cube/api.c
 endif
 
 libsigrok_la_LIBADD = $(LIBOBJS)
