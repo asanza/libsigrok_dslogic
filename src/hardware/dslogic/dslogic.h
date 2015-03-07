@@ -120,4 +120,12 @@ SR_PRIV clk_edge dslogic_get_clock_edge(const struct sr_dev_inst* sdi);
 
 SR_PRIV void dslogic_set_trigger(const struct sr_dev_inst* sdi,
                                        int stage, int probe, int trigger);
+
+SR_PRIV int dslogic_get_sample_width(const struct sr_dev_inst* sdi);
+
+SR_PRIV void dslogic_set_trigger_mask(const struct sr_dev_inst* sdi,
+                                      int stage, int probe_bit);
+
+SR_PRIV void dslogic_set_trigger_value(const struct sr_dev_inst* sdi,
+                                       int stage, int probe_bit);
 #endif

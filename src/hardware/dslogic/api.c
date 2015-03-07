@@ -152,7 +152,6 @@ static const uint64_t samplecounts[] = {
 const char* config_path = "/home/diego/media/DSLogic/dslogic-gui/res/";
 
 static int receive_data(int fd, int revents, void *cb_data) {
-    //static int i = 0;
     struct timeval tv;
     struct drv_context *drvc;
     const struct sr_dev_inst *sdi;
@@ -172,7 +171,6 @@ static int receive_data(int fd, int revents, void *cb_data) {
 }
 
 static int configure_probes(const struct sr_dev_inst *sdi) {
-	printf("configure_probes\n");
 	struct sr_channel *probe;
     struct sr_trigger *trigger;
     struct sr_trigger_stage *stage;
@@ -181,23 +179,16 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
     GSList *l,*m;
     dslogic_clear_trigger_stages(sdi);
     /* if no triggers, return happily */
-	for (l = sdi->channels; l; l = l->next) {
-		probe = (struct sr_channel *) l->data;
-		if (probe->enabled == FALSE)
-			continue;
-    }
     if (!(trigger = sr_session_trigger_get(sdi->session))){
         dslogic_set_trigger_stage(sdi, TRIGGER_FIRED);
         return SR_OK;
     }
-
     int num_stages = g_slist_length(trigger->stages);
     if(num_stages > NUM_TRIGGER_STAGES){
         sr_err("This device only supports %d trigger stages.",
                NUM_TRIGGER_STAGES);
         return SR_ERR;
     }
-    dslogic_set_trigger_stage(sdi, num_stages);
     int i = 0;
     for(l = trigger->stages; l; l = l->next){
         stage = l->data;
@@ -214,6 +205,7 @@ static int configure_probes(const struct sr_dev_inst *sdi) {
             i++;
         }
 	}
+
     dslogic_set_trigger_stage(sdi,0);
 	return SR_OK;
 }
@@ -247,7 +239,7 @@ static int adjust_probes(const struct sr_dev_inst *sdi, int num_probes) {
     for(l = sdi->channels; l; l=l->next){
         probe = (struct sr_channel*)l->data;
         if(num_probes-- > 0)
-            probe->enabled = TRUE;
+            probe->enabled = probe->enabled;
         else
             probe->enabled = FALSE;
     }
@@ -650,21 +642,21 @@ static int dev_acquisition_stop(struct sr_dev_inst *sdi, void *cb_data) {
 }
 
 SR_PRIV struct sr_dev_driver dslogic_driver_info = {
-	.name = "dslogic",
-    .longname = "Dreamsourcelab DSLogic",
-	.api_version = 1,
-	.init = init,
-	.cleanup = cleanup,
-	.scan = scan,
-	.dev_list = dev_list,
-    .dev_clear = dev_clear,
-	.config_get = config_get,
-	.config_set = config_set,
-	.config_list = config_list,
-	.dev_open = dev_open,
-	.dev_close = dev_close,
-	.dev_acquisition_start = dev_acquisition_start,
-	.dev_acquisition_stop = dev_acquisition_stop,
-	.priv = NULL,
+    .name                   = "dslogic",
+    .longname               = "Dreamsourcelab DSLogic",
+    .api_version            = 1,
+    .init                   = init,
+    .cleanup                = cleanup,
+    .scan                   = scan,
+    .dev_list               = dev_list,
+    .dev_clear              = dev_clear,
+    .config_get             = config_get,
+    .config_set             = config_set,
+    .config_list            = config_list,
+    .dev_open               = dev_open,
+    .dev_close              = dev_close,
+    .dev_acquisition_start  = dev_acquisition_start,
+    .dev_acquisition_stop   = dev_acquisition_stop,
+    .priv                   = NULL,
 };
 

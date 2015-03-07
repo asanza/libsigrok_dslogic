@@ -313,13 +313,6 @@ static void receive_trigger_pos(struct libusb_transfer *transfer) {
             packet.type = SR_DF_TRIGGER;
             packet.payload = trigger_pos;
             sr_session_send(devc->cb_data, &packet);
-            packet.type = SR_DF_LOGIC;
-            packet.payload = &logic;
-            logic.unitsize = devc->sample_width ? 2 : 1;
-            logic.length = sizeof (trigger_pos->first_block);
-            logic.data = trigger_pos->first_block;
-            devc->sample_count += logic.length / logic.unitsize;
-            sr_session_send(devc->cb_data, &packet);
             devc->status = DSLOGIC_TRIGGERED;
             free_transfer(transfer);
             devc->num_transfers = 0;
@@ -767,6 +760,13 @@ SR_PRIV void dslogic_clear_trigger_stages(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
     int i;
+    for (i = 0; i < NUM_TRIGGER_STAGES; i++) {
+        devc->trigger_mask[i] = 0;
+        devc->trigger_value[i] = 0;
+        devc->trigger_settings.trigger0[NUM_TRIGGER_STAGES][i] = TRIGGER_FIRED;
+        devc->trigger_settings.trigger1[NUM_TRIGGER_STAGES][i] = TRIGGER_FIRED;
+    }
+
     devc->trigger_settings.stage_count = 0;
 }
 
@@ -779,12 +779,6 @@ SR_PRIV void dslogic_set_trigger_stage(const struct sr_dev_inst* sdi,
         devc->trigger_enabled = FALSE;
     else
         devc->trigger_enabled = TRUE;
-    /* clear all past triggers: TODO: move own function? */
-    int i;
-    for(i = 0; i < NUM_TRIGGER_STAGES; i++){
-        devc->trigger_settings.trigger0[NUM_TRIGGER_STAGES][i] = TRIGGER_FIRED;
-        devc->trigger_settings.trigger1[NUM_TRIGGER_STAGES][i] = TRIGGER_FIRED;
-    }
 }
 
 SR_PRIV void dslogic_set_trigger(const struct sr_dev_inst* sdi,
@@ -794,7 +788,7 @@ SR_PRIV void dslogic_set_trigger(const struct sr_dev_inst* sdi,
     devc->trigger_settings.trigger1[NUM_TRIGGER_STAGES][probe] = TRIGGER_FIRED; //Dont care
 }
 
-SR_PRIV int dslogic_get_sample_wide(const struct sr_dev_inst* sdi){
+SR_PRIV int dslogic_get_sample_width(const struct sr_dev_inst* sdi){
     g_assert(sdi);
     struct dev_context *devc = sdi->priv;
     return devc->current_samplerate <= SR_MHZ(100) ? 2 : devc->sample_width ? 2 : 1;
@@ -838,7 +832,7 @@ SR_PRIV gboolean dslogic_sample_complete(const struct sr_dev_inst* sdi){
 SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, int data_size){
     g_assert(sdi);
     struct dev_context* devc = sdi->priv;
-    int sample_width = dslogic_get_sample_wide(sdi);
+    int sample_width = dslogic_get_sample_width(sdi);
     int cur_sample_count = data_size / sample_width;
     struct sr_datafeed_packet packet;
     struct sr_datafeed_logic logic;
@@ -875,6 +869,7 @@ SR_PRIV void dslogic_process_data(const struct sr_dev_inst* sdi, uint8_t* data, 
                     logic.length = devc->trigger_settings.stage_count * logic.unitsize;
                     logic.data = devc->trigger_buffer;
                     sr_session_send(devc->cb_data, &packet);
+                    sr_dbg("Trigger Fired: ");
                     devc->trigger_settings.stage_count = TRIGGER_FIRED;
                     break;
                 }
@@ -995,7 +990,6 @@ SR_PRIV int dslogic_start_acquisition(const struct sr_dev_inst* sdi,
     devc->submitted_transfers++;
     devc->status = DSLOGIC_START;
     // Send header packet to the session bus.
-    //std_session_send_df_header(cb_data, LOG_PREFIX);
     std_session_send_df_header(sdi, LOG_PREFIX);
     return SR_OK;
 }
@@ -1024,14 +1018,11 @@ static void dslogic_receive_transfer(struct libusb_transfer *transfer) {
     GTimeVal cur_time;
     g_get_current_time(&cur_time);
 
-    sr_dbg("receive_transfer: current time %d sec %d usec",
-           cur_time.tv_sec, cur_time.tv_usec);
     /*
      * If acquisition has already ended, just free any queued up
      * transfer that come in.
      */
     if (dslogic_get_sample_count(sdi) == -1) {
-        sr_dbg("receive_data: already ended");
         free_transfer(transfer);
         return;
     }
@@ -1043,7 +1034,6 @@ static void dslogic_receive_transfer(struct libusb_transfer *transfer) {
     cur_buf = transfer->buffer;
     switch (transfer->status) {
         case LIBUSB_TRANSFER_NO_DEVICE:
-            //abort_acquisition(devc);
             free_transfer(transfer);
             dslogic_set_error_status(sdi);
             return;
